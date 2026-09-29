@@ -70,6 +70,13 @@ const config: Config = {
           DEFAULT: 'hsl(var(--surface))',
           elevated: 'hsl(var(--surface-elevated))',
         },
+        sidebar: {
+          DEFAULT: 'hsl(var(--sidebar-bg))',
+          foreground: 'hsl(var(--sidebar-fg))',
+          border: 'hsl(var(--sidebar-border))',
+          hover: 'hsl(var(--sidebar-item-hover))',
+          active: 'hsl(var(--sidebar-item-active))',
+        },
       },
       borderRadius: {
         lg: 'var(--radius)',

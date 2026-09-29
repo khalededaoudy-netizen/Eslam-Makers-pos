@@ -14,7 +14,9 @@
 @layer base {
 
   /* ── Dark Theme (Default) ── */
-  :root {
+  :root,
+  .dark,
+  [data-theme="dark"] {
     --background: 216 28% 7%;
     --foreground: 210 20% 95%;
 
@@ -56,13 +58,16 @@
 
     /* Sidebar */
     --sidebar-bg: 216 28% 7%;
+    --sidebar-fg: 210 20% 95%;
     --sidebar-border: 215 14% 16%;
     --sidebar-item-hover: 215 16% 14%;
     --sidebar-item-active: 207 100% 42%;
   }
 
   /* ── Light Theme ── */
-  .light {
+  .light,
+  :root.light,
+  [data-theme="light"] {
     --background: 210 20% 98%;
     --foreground: 220 20% 10%;
 
@@ -94,9 +99,10 @@
     --surface: 0 0% 100%;
     --surface-elevated: 210 20% 98%;
 
-    --sidebar-bg: 220 20% 14%;
-    --sidebar-border: 220 16% 22%;
-    --sidebar-item-hover: 220 16% 20%;
+    --sidebar-bg: 0 0% 100%;
+    --sidebar-fg: 220 20% 10%;
+    --sidebar-border: 214 14% 88%;
+    --sidebar-item-hover: 210 16% 94%;
     --sidebar-item-active: 207 100% 42%;
   }
 }

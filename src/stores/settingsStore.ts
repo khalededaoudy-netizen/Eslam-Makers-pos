@@ -97,7 +97,10 @@ export const useSettingsStore = create<SettingsState>()(
           i18n.changeLanguage(s.language)
           document.documentElement.lang = s.language
           document.documentElement.dir = s.language === 'ar' ? 'rtl' : 'ltr'
-          document.documentElement.classList.toggle('light', s.theme === 'light')
+          const isLight = s.theme === 'light'
+          document.documentElement.classList.toggle('light', isLight)
+          document.documentElement.classList.toggle('dark', !isLight)
+          document.documentElement.setAttribute('data-theme', s.theme)
 
           set({
             language: s.language,
@@ -152,7 +155,10 @@ export const useSettingsStore = create<SettingsState>()(
        */
       setTheme: async (theme, actor) => {
         set({ theme })
-        document.documentElement.classList.toggle('light', theme === 'light')
+        const isLight = theme === 'light'
+        document.documentElement.classList.toggle('light', isLight)
+        document.documentElement.classList.toggle('dark', !isLight)
+        document.documentElement.setAttribute('data-theme', theme)
 
         const currentActor = actor ?? useAuthStore.getState().user
         if (currentActor && currentActor.isActive) {

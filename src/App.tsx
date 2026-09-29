@@ -23,7 +23,10 @@ function AppBootstrap() {
     // Apply stored theme and language initially
     document.documentElement.lang = language
     document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr'
-    document.documentElement.classList.toggle('light', theme === 'light')
+    const isLight = theme === 'light'
+    document.documentElement.classList.toggle('light', isLight)
+    document.documentElement.classList.toggle('dark', !isLight)
+    document.documentElement.setAttribute('data-theme', theme)
 
     async function boot() {
       try {
