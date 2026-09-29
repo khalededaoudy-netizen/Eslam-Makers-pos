@@ -3,23 +3,31 @@ MAKERS POS v1.0.0 — OFFICIAL RELEASE CHECKSUMS (SHA-256)
 Generated: 2026-09-29
 ================================================================================
 
-File:   CHANGELOG.txt
-Size:   2944 bytes
-SHA256: 5E31EB75ACD3D0BAFE5864AD4283C693C93AB7955A570AC9483F9E2A9A8BE1E4
+File:   MAKERS POS_1.0.0_x64_en-US.msi (Windows MSI Production Installer)
+Size:   6,336,512 bytes (6.04 MB)
+SHA256: 4C51B610F33AE5F50AB87D4B87C65F83ADA97E0BCE0A1D1AF4AEAE6BEE67C73E
 --------------------------------------------------------------------------------
-File:   INSTALLATION.txt
-Size:   3139 bytes
-SHA256: 829F024FE9264F5ED9AD070D1CF3BB269D2914DDA3BA9B66EC66479503784869
+File:   MAKERS POS_1.0.0_x64-setup.exe (Windows NSIS Setup Installer)
+Size:   4,738,261 bytes (4.52 MB)
+SHA256: 90971B0861D2913DB37FE4F0BBC21A219C7DB0523F8524043128CA5E9D1DA488
 --------------------------------------------------------------------------------
-File:   MAKERS POS.exe
-Size:   15414784 bytes
-SHA256: 7BA250FE3F464A2BB4A12C23373ACB9B98DD86E76CB2B8715EA1B6C876CDE455
+File:   MAKERS POS.exe (Standalone Direct Executable)
+Size:   15,565,824 bytes (14.84 MB)
+SHA256: 69E682F2555F7DA9148AC2E99B942C91921AED9BD60D26EBCFDDDA68A3EB98EE
 --------------------------------------------------------------------------------
 File:   README.txt
-Size:   4198 bytes
+Size:   4,198 bytes
 SHA256: D3F1A12714E28CA7693A6C486B64CEEBB3A4C0284F4F93B232F931B38E83174D
 --------------------------------------------------------------------------------
+File:   INSTALLATION.txt
+Size:   3,139 bytes
+SHA256: 829F024FE9264F5ED9AD070D1CF3BB269D2914DDA3BA9B66EC66479503784869
+--------------------------------------------------------------------------------
 File:   RECOVERY.txt
-Size:   2756 bytes
+Size:   2,756 bytes
 SHA256: E54E59DA1BB20AF50D5775DEAE3C759D7ED69F5606E021F20AE724023CC78693
 --------------------------------------------------------------------------------
+File:   CHANGELOG.txt
+Size:   2,944 bytes
+SHA256: 5E31EB75ACD3D0BAFE5864AD4283C693C93AB7955A570AC9483F9E2A9A8BE1E4
+================================================================================

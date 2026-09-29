@@ -1,67 +1,79 @@
 ================================================================================
-MAKERS POS v1.0.0 — INSTALLATION & DEPLOYMENT GUIDE
+MAKERS POS v1.0.0 — INSTALLATION & DEPLOYMENT GUIDE FOR CASHIER WORKSTATION
 ================================================================================
 
-1. PORTABLE / DIRECT DEPLOYMENT
--------------------------------
-MAKERS POS is packaged as a standalone, zero-dependency Windows executable.
-No installer or runtime setup scripts are mandatory.
+1. INSTALLATION VIA WINDOWS INSTALLER (RECOMMENDED)
+----------------------------------------------------
+You have two professional Windows installer options in this package:
 
-Steps:
-1. Copy the "MAKERS-POS-v1.0.0" folder to the desired workstation folder:
-   Recommended location:
-   C:\Program Files\MAKERS POS\
-   or
-   C:\MAKERS POS\
-2. Create a desktop shortcut to "MAKERS POS.exe".
-3. Launch "MAKERS POS.exe". The window will open maximized automatically.
+OPTION A: Microsoft Windows Installer (MSI)
+  File: MAKERS POS_1.0.0_x64_en-US.msi
+  1. Copy "MAKERS POS_1.0.0_x64_en-US.msi" to your USB Flash Drive.
+  2. Insert the USB Drive into the cashier computer.
+  3. Double-click the MSI file.
+  4. Follow the setup wizard.
+  5. The installer will automatically:
+     - Install MAKERS POS to Program Files / AppData.
+     - Create a Desktop Shortcut.
+     - Create a Start Menu Shortcut under "MAKERS POS".
+     - Register the app in Windows "Installed Apps" for easy clean uninstall.
+
+OPTION B: NSIS Setup Executable (EXE)
+  File: MAKERS POS_1.0.0_x64-setup.exe
+  1. Double-click "MAKERS POS_1.0.0_x64-setup.exe".
+  2. Select installation directory and confirm.
+  3. Automatically creates Start Menu and Desktop shortcuts.
+
+OPTION C: Portable Standalone Executable (Zero-Install)
+  File: MAKERS POS.exe
+  1. Copy "MAKERS POS.exe" directly to your desktop or C:\MAKERS POS\.
+  2. Double-click to run immediately without installation.
 
 
-2. DATABASE INITIALIZATION BEHAVIOR
------------------------------------
-- The application automatically detects and connects to the SQLite database located at:
+2. SYSTEM PREREQUISITES & INDEPENDENCE
+---------------------------------------
+- OS: Windows 10 / Windows 11 (64-bit).
+- Microsoft Edge WebView2 (Pre-installed on modern Windows 10/11).
+- NO Node.js required.
+- NO npm required.
+- NO Rust or Visual Studio required.
+- NO Internet connection required (Fully offline POS operations).
+
+
+3. DATABASE INITIALIZATION & PERSISTENCE
+-----------------------------------------
+- The application automatically connects to SQLite at:
   C:\Users\<Current-User>\AppData\Roaming\com.makers.pos\makers_pos.db
-- On first launch:
-  * Creates the "com.makers.pos" directory if not present.
-  * Runs all internal schema migrations idempotently.
-  * Seeds foundational reference data (roles, default admin, store settings).
-- On subsequent launches:
-  * Validates existing database integrity.
-  * Preserves 100% of existing products, customers, transactions, and logs.
-  * Never overwrites or truncates existing production data.
+- On first launch on a new computer:
+  * Creates the directory structure automatically.
+  * Runs all internal schema migrations.
+  * Seeds essential system configurations (default Admin, roles, 35 MAKERS categories).
+- On all subsequent launches, reboots, and restarts:
+  * Persists 100% of products, customers, transactions, inventory, and settings.
+  * Database is completely isolated from Program Files and will never be deleted upon app upgrade.
 
 
-3. THERMAL PRINTER SETUP (Xprinter XP-80C / Rongta / Epson)
------------------------------------------------------------
+4. THERMAL RECEIPT PRINTER (Xprinter XP-80C / Rongta / ESC-POS)
+----------------------------------------------------------------
 1. Connect printer via USB and power on.
-2. Install the manufacturer Windows driver (e.g. "XP-80C Driver" or "POS-80").
-3. In Windows "Printers & Scanners", set the printer paper size to "80 x 297 mm" or "80mm Roll".
+2. Install the Windows manufacturer driver (e.g. "XP-80C Driver").
+3. In Windows "Printers & Scanners", verify paper size is set to "80mm".
 4. Open MAKERS POS, go to "Settings" -> "Store Settings" -> "Receipt Printing".
-5. Choose "80mm" or "58mm" paper width.
-6. Print a test receipt from POS or Sales history to verify cut alignment.
+5. Set paper width to "80mm" or "58mm".
+6. Print test receipt.
 
 
-4. BARCODE SCANNER SETUP
-------------------------
-1. Plug scanner USB cable or wireless dongle into the POS station.
-2. Verify scanner is in "HID Keyboard Emulation" mode.
-3. Test by scanning a barcode into Notepad: the barcode number should appear followed by a newline/Enter.
-4. In MAKERS POS, scanning any registered product barcode automatically adds it to the active cart with audio feedback.
+5. BARCODE SCANNER SETUP
+-------------------------
+1. Plug USB barcode scanner into any USB port.
+2. Scanner must operate in standard "HID Keyboard" mode.
+3. In MAKERS POS, scanning any product barcode automatically adds it to the cart.
 
 
-5. BARCODE LABEL / STICKER PRINTING
------------------------------------
-1. Navigate to "Barcode Labels" (استيكرات الباركود) in the sidebar.
-2. Search and select any product from your catalog.
-3. Choose label dimensions (e.g. 50x25mm, 40x30mm, 60x40mm, 38x25mm) and quantity.
-4. Preview the scannable vector barcode.
-5. Click "Print Labels" to print directly to your label printer.
-
-
-6. UNINSTALLATION & DATA PRESERVATION
-------------------------------------
-- To remove the application: Simply delete the application folder or executable.
-- Your store database and backup snapshots are kept safe in:
-  %APPDATA%\com.makers.pos\
-- If you reinstall or upgrade to a newer version in the future, the new version will seamlessly reconnect to your existing database.
+6. BARCODE LABEL PRINTING
+--------------------------
+1. Navigate to "Barcode Labels" in the sidebar.
+2. Select products and quantity.
+3. Choose label size (e.g., 50x25mm, 40x30mm, 38x25mm).
+4. Click "Print Labels" to print directly on barcode sticker printer.
 ================================================================================
