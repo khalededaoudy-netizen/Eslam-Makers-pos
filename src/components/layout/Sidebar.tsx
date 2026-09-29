@@ -74,6 +74,8 @@ interface SidebarProps {
   onCollapse: (v: boolean) => void
 }
 
+const allNavPaths = navGroups.flatMap(g => g.items.map(i => i.path))
+
 export function Sidebar({ collapsed, onCollapse }: SidebarProps) {
   const { t } = useTranslation()
   const location = useLocation()
@@ -92,7 +94,13 @@ export function Sidebar({ collapsed, onCollapse }: SidebarProps) {
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/'
-    return location.pathname.startsWith(path)
+    if (location.pathname === path) return true
+    return (
+      location.pathname.startsWith(`${path}/`) &&
+      !allNavPaths.some(
+        p => p !== path && p.startsWith(path) && (location.pathname === p || location.pathname.startsWith(`${p}/`))
+      )
+    )
   }
 
   const canAccess = (permission: { resource: string; action: string } | null) => {

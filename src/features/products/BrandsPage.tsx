@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Award, Edit2, Trash2, DownloadCloud, CheckCircle2 } from 'lucide-react'
 import { productService, BrandItem } from '@/services/products/productService'
 import { useAuthStore, usePermission } from '@/stores/authStore'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 
 const MAKERS_STANDARD_BRANDS = [
   'Arduino',
@@ -41,6 +42,9 @@ export function BrandsPage() {
   const [feedback, setFeedback] = useState('')
   const [error, setError] = useState('')
 
+  // Unified Delete Confirmation State
+  const [deleteBrandTarget, setDeleteBrandTarget] = useState<BrandItem | null>(null)
+
   useEffect(() => {
     loadBrands()
   }, [])
@@ -52,6 +56,14 @@ export function BrandsPage() {
     } catch (err: any) {
       console.error('Failed to load brands:', err)
     }
+  }
+
+  async function executeDeleteBrand() {
+    if (!deleteBrandTarget) return
+    await productService.deleteBrand(deleteBrandTarget.id, { id: user?.id, fullName: user?.fullName })
+    setDeleteBrandTarget(null)
+    setFeedback(t('common.deleteSuccess', 'تم الحذف بنجاح'))
+    await loadBrands()
   }
 
   async function handleImportMakersBrands() {
@@ -212,13 +224,9 @@ export function BrandsPage() {
                                 <Edit2 className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={async () => {
-                                  if (window.confirm(t('common.confirm'))) {
-                                    await productService.deleteBrand(b.id, { id: user?.id, fullName: user?.fullName })
-                                    loadBrands()
-                                  }
-                                }}
-                                className="p-1.5 text-destructive hover:bg-destructive/10 bg-muted rounded-lg transition-colors"
+                                onClick={() => setDeleteBrandTarget(b)}
+                                className="p-1.5 text-destructive hover:bg-destructive/10 bg-muted rounded-lg transition-colors cursor-pointer"
+                                title={t('common.delete')}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -234,6 +242,16 @@ export function BrandsPage() {
           </div>
         </div>
       </div>
+
+      {/* Unified Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!deleteBrandTarget}
+        onClose={() => setDeleteBrandTarget(null)}
+        onConfirm={executeDeleteBrand}
+        title={t('brands.confirmDelete', 'تأكيد حذف الماركة')}
+        itemName={deleteBrandTarget?.name}
+        confirmText={t('common.delete', 'حذف')}
+      />
     </div>
   )
 }

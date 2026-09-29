@@ -34,6 +34,7 @@ import { CustomerModal } from './components/CustomerModal'
 import { CustomerDetailsModal } from './components/CustomerDetailsModal'
 import { useAuthStore, usePermission } from '@/stores/authStore'
 import { formatCurrency, formatDate } from '@/lib/formatters'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 
 const TYPE_CONFIG: Record<CustomerType, { ar: string; en: string; color: string }> = {
   individual: {
@@ -87,6 +88,9 @@ export function CustomersPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [detailsCustomerId, setDetailsCustomerId] = useState<string | null>(null)
 
+  // Unified Status/Archive Confirmation State
+  const [statusToggleTarget, setStatusToggleTarget] = useState<CustomerListItem | null>(null)
+
   const canCreate = isAdmin || can('create', 'customers')
   const canEdit = isAdmin || can('update', 'customers')
   const canDelete = isAdmin || can('delete', 'customers')
@@ -118,24 +122,16 @@ export function CustomersPage() {
     return () => clearTimeout(timer)
   }, [search, statusFilter, typeFilter])
 
-  const handleToggleStatus = async (c: CustomerListItem) => {
-    const isCurrentlyActive = c.is_active === 1 && !c.archived_at
-    const confirmMsg = isCurrentlyActive
-      ? t('customers.confirmArchive', 'هل تريد بالتأكيد أرشفة هذا العميل؟')
-      : t('customers.confirmReactivate', 'هل تريد بالتأكيد إعادة تفعيل هذا العميل؟')
-
-    if (window.confirm(confirmMsg)) {
-      try {
-        if (isCurrentlyActive) {
-          await customerService.archiveCustomer(c.id, user || undefined)
-        } else {
-          await customerService.reactivateCustomer(c.id, user || undefined)
-        }
-        loadData()
-      } catch (err: any) {
-        alert(err.message || 'Error updating status')
-      }
+  const executeToggleStatus = async () => {
+    if (!statusToggleTarget) return
+    const isCurrentlyActive = statusToggleTarget.is_active === 1 && !statusToggleTarget.archived_at
+    if (isCurrentlyActive) {
+      await customerService.archiveCustomer(statusToggleTarget.id, user || undefined)
+    } else {
+      await customerService.reactivateCustomer(statusToggleTarget.id, user || undefined)
     }
+    setStatusToggleTarget(null)
+    loadData()
   }
 
   return (
@@ -452,7 +448,7 @@ export function CustomersPage() {
 
                             {canDelete && (
                               <button
-                                onClick={() => handleToggleStatus(c)}
+                                onClick={() => setStatusToggleTarget(c)}
                                 className={`p-1.5 rounded-lg transition-colors ${
                                   isActive
                                     ? 'text-muted-foreground hover:text-destructive hover:bg-destructive/10'
@@ -501,6 +497,35 @@ export function CustomersPage() {
           setIsModalOpen(true)
         }}
         onStatusChanged={loadData}
+      />
+
+      {/* Unified Status Change Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!statusToggleTarget}
+        onClose={() => setStatusToggleTarget(null)}
+        onConfirm={executeToggleStatus}
+        variant={statusToggleTarget?.is_active === 1 && !statusToggleTarget?.archived_at ? 'danger' : 'info'}
+        title={
+          statusToggleTarget?.is_active === 1 && !statusToggleTarget?.archived_at
+            ? t('customers.confirmArchiveTitle', 'تأكيد أرشفة العميل')
+            : t('customers.confirmReactivateTitle', 'تأكيد إعادة تفعيل العميل')
+        }
+        description={
+          statusToggleTarget?.is_active === 1 && !statusToggleTarget?.archived_at
+            ? t('customers.confirmArchive', 'هل تريد بالتأكيد أرشفة هذا العميل؟ لن يظهر في القوائم النشطة ونقطة البيع.')
+            : t('customers.confirmReactivate', 'هل تريد بالتأكيد إعادة تفعيل هذا العميل؟')
+        }
+        itemName={statusToggleTarget?.name}
+        confirmText={
+          statusToggleTarget?.is_active === 1 && !statusToggleTarget?.archived_at
+            ? t('customers.archive', 'أرشفة')
+            : t('customers.reactivate', 'إعادة تفعيل')
+        }
+        warningMessage={
+          statusToggleTarget?.is_active === 1 && !statusToggleTarget?.archived_at
+            ? undefined
+            : null as any
+        }
       />
     </div>
   )

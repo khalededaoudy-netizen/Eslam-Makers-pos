@@ -9,6 +9,7 @@ import { SupplierModal } from './components/SupplierModal'
 import { SupplierDetailsModal } from './components/SupplierDetailsModal'
 import { useAuthStore, usePermission } from '@/stores/authStore'
 import { formatCurrency } from '@/lib/formatters'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 
 export function SuppliersPage() {
   const { t } = useTranslation()
@@ -30,6 +31,9 @@ export function SuppliersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedSupplier, setSelectedSupplier] = useState<SupplierItem | null>(null)
   const [detailsSupplierId, setDetailsSupplierId] = useState<string | null>(null)
+
+  // Unified Delete Confirmation State
+  const [deleteSupplierTarget, setDeleteSupplierTarget] = useState<SupplierItem | null>(null)
 
   const loadData = async () => {
     setLoading(true)
@@ -57,34 +61,11 @@ export function SuppliersPage() {
     return () => clearTimeout(timer)
   }, [search, statusFilter])
 
-  const handleToggleStatus = async (s: SupplierItem) => {
-    const nextState = s.is_active !== 1
-    const confirmMsg = nextState
-      ? t('suppliers.confirmActivate', 'هل تريد تفعيل هذا المورد؟')
-      : t('suppliers.confirmDeactivate', 'هل تريد إيقاف تفعيل هذا المورد؟')
-
-    if (window.confirm(confirmMsg)) {
-      try {
-        await supplierService.toggleSupplierStatus(s.id, nextState, user || undefined)
-        loadData()
-      } catch (err: any) {
-        alert(err.message || 'Error updating status')
-      }
-    }
-  }
-
-  const handleDelete = async (s: SupplierItem) => {
-    if (window.confirm(t('suppliers.confirmDelete', 'هل تريد بالتأكيد حذف/أرشفة هذا المورد؟'))) {
-      try {
-        const res = await supplierService.deleteSupplier(s.id, user || undefined)
-        if (res.action === 'archived') {
-          alert(t('suppliers.noticeArchived', 'تمت أرشفة المورد لوجود فواتير مشتريات تاريخية مرتبطة به.'))
-        }
-        loadData()
-      } catch (err: any) {
-        alert(err.message || 'Error deleting supplier')
-      }
-    }
+  const executeDeleteSupplier = async () => {
+    if (!deleteSupplierTarget) return
+    await supplierService.deleteSupplier(deleteSupplierTarget.id, user || undefined)
+    setDeleteSupplierTarget(null)
+    loadData()
   }
 
   const canCreate = isAdmin || can('create', 'suppliers')
@@ -336,9 +317,9 @@ export function SuppliersPage() {
 
                           {canDelete && (
                             <button
-                              onClick={() => handleDelete(s)}
-                              title="حذف / أرشفة المورد"
-                              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-rose-400 transition-colors"
+                              onClick={() => setDeleteSupplierTarget(s)}
+                              title={t('common.delete', 'حذف')}
+                              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-rose-400 transition-colors cursor-pointer"
                             >
                               <Trash2 className="w-4 h-4 text-rose-400" />
                             </button>
@@ -366,6 +347,17 @@ export function SuppliersPage() {
         isOpen={!!detailsSupplierId}
         onClose={() => setDetailsSupplierId(null)}
         supplierId={detailsSupplierId}
+      />
+
+      {/* Unified Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!deleteSupplierTarget}
+        onClose={() => setDeleteSupplierTarget(null)}
+        onConfirm={executeDeleteSupplier}
+        title={t('suppliers.confirmDeleteTitle', 'تأكيد حذف المورد')}
+        description={t('suppliers.confirmDelete', 'هل تريد بالتأكيد حذف أو أرشفة هذا المورد؟')}
+        itemName={deleteSupplierTarget?.name}
+        confirmText={t('common.delete', 'حذف')}
       />
     </div>
   )

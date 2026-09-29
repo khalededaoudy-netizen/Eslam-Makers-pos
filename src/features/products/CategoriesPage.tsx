@@ -24,6 +24,7 @@ import {
 } from '@/services/categories/makersCategoryService'
 import { MAKERS_MASTER_CATEGORIES } from '@/services/categories/makersCategories'
 import { useAuthStore, usePermission } from '@/stores/authStore'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 
 export const MAKERS_STANDARD_CATEGORIES = MAKERS_MASTER_CATEGORIES
 
@@ -49,6 +50,9 @@ export function CategoriesPage() {
   const [isExecutingImport, setIsExecutingImport] = useState(false)
   const [lastImportResult, setLastImportResult] = useState<ImportExecutionResult | null>(null)
 
+  // Unified Delete Confirmation State
+  const [deleteCategoryTarget, setDeleteCategoryTarget] = useState<CategoryWithCount | null>(null)
+
   useEffect(() => {
     loadCategories()
   }, [])
@@ -62,6 +66,24 @@ export function CategoriesPage() {
       const baseCats = await productService.getCategories()
       setCategories(baseCats.map(c => ({ ...c, product_count: 0 } as CategoryWithCount)))
     }
+  }
+
+  async function executeDeleteCategory() {
+    if (!deleteCategoryTarget) return
+    if (deleteCategoryTarget.product_count > 0) {
+      throw new Error(
+        isRtl
+          ? `لا يمكن حذف هذا التصنيف لأنه يحتوي على (${deleteCategoryTarget.product_count}) منتج مرتبط. يرجى نقل أو حذف المنتجات أولاً.`
+          : `Cannot delete this category because it contains (${deleteCategoryTarget.product_count}) linked products. Please move or delete the products first.`
+      )
+    }
+    await productService.deleteCategory(deleteCategoryTarget.id, {
+      id: user?.id,
+      fullName: user?.fullName,
+    })
+    setDeleteCategoryTarget(null)
+    setFeedback(isRtl ? 'تم حذف التصنيف بنجاح' : 'Category deleted successfully')
+    await loadCategories()
   }
 
   // Open Preview Modal
@@ -446,23 +468,7 @@ export function CategoriesPage() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={async () => {
-                                    if (
-                                      window.confirm(
-                                        `هل أنت متأكد من حذف تصنيف "${c.name_ar}"؟ تأكد من عدم ارتباط منتجات به.`
-                                      )
-                                    ) {
-                                      try {
-                                        await productService.deleteCategory(c.id, {
-                                          id: user?.id,
-                                          fullName: user?.fullName,
-                                        })
-                                        await loadCategories()
-                                      } catch (err: any) {
-                                        setError(err.message || 'فشل حذف التصنيف')
-                                      }
-                                    }
-                                  }}
+                                  onClick={() => setDeleteCategoryTarget(c)}
                                   className="p-1.5 text-destructive hover:bg-destructive/10 bg-muted rounded-lg transition-colors cursor-pointer"
                                   title={t('common.delete')}
                                 >
@@ -563,6 +569,21 @@ export function CategoriesPage() {
           </div>
         </div>
       )}
+
+      {/* Unified Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!deleteCategoryTarget}
+        onClose={() => setDeleteCategoryTarget(null)}
+        onConfirm={executeDeleteCategory}
+        title={isRtl ? 'تأكيد حذف التصنيف' : 'Confirm Category Deletion'}
+        itemName={deleteCategoryTarget ? (isRtl ? deleteCategoryTarget.name_ar : deleteCategoryTarget.name_en) : ''}
+        confirmText={t('common.delete', 'حذف')}
+        warningMessage={
+          deleteCategoryTarget && deleteCategoryTarget.product_count > 0
+            ? (isRtl ? `تنبيه: هذا التصنيف يحتوي على ${deleteCategoryTarget.product_count} منتج مرتبط.` : `Warning: This category contains ${deleteCategoryTarget.product_count} linked products.`)
+            : undefined
+        }
+      />
     </div>
   )
 }

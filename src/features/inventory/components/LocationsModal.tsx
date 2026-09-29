@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { X, MapPin, Plus, Edit2, Trash2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { inventoryService, StorageLocation } from '@/services/inventory/inventoryService'
 import { useAuthStore } from '@/stores/authStore'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 
 interface LocationsModalProps {
   onClose: () => void
@@ -17,6 +18,7 @@ export function LocationsModal({ onClose, onUpdated }: LocationsModalProps) {
   const [form, setForm] = useState({ name: '', name_ar: '', code: '', description: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [deleteLocTarget, setDeleteLocTarget] = useState<StorageLocation | null>(null)
 
   useEffect(() => {
     loadLocations()
@@ -29,6 +31,14 @@ export function LocationsModal({ onClose, onUpdated }: LocationsModalProps) {
     } catch (err) {
       console.error('Failed to load locations', err)
     }
+  }
+
+  async function executeDeleteLocation() {
+    if (!deleteLocTarget) return
+    await inventoryService.deleteStorageLocation(deleteLocTarget.id, { id: user?.id, fullName: user?.fullName })
+    setDeleteLocTarget(null)
+    loadLocations()
+    onUpdated?.()
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -225,14 +235,9 @@ export function LocationsModal({ onClose, onUpdated }: LocationsModalProps) {
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
                             <button
-                              onClick={async () => {
-                                if (window.confirm(t('common.confirm', 'هل أنت متأكد؟'))) {
-                                  await inventoryService.deleteStorageLocation(loc.id, { id: user?.id, fullName: user?.fullName })
-                                  loadLocations()
-                                  onUpdated?.()
-                                }
-                              }}
-                              className="p-1.5 text-destructive hover:bg-destructive/10 bg-muted rounded-lg transition-colors"
+                              onClick={() => setDeleteLocTarget(loc)}
+                              className="p-1.5 text-destructive hover:bg-destructive/10 bg-muted rounded-lg transition-colors cursor-pointer"
+                              title={t('common.delete', 'حذف')}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -257,6 +262,16 @@ export function LocationsModal({ onClose, onUpdated }: LocationsModalProps) {
           </button>
         </div>
       </div>
+
+      {/* Unified Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!deleteLocTarget}
+        onClose={() => setDeleteLocTarget(null)}
+        onConfirm={executeDeleteLocation}
+        title={t('inventory.confirmDeleteLocation', 'تأكيد حذف موقع التخزين')}
+        itemName={deleteLocTarget?.name_ar || deleteLocTarget?.name}
+        confirmText={t('common.delete', 'حذف')}
+      />
     </div>
   )
 }

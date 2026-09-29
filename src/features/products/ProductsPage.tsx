@@ -31,6 +31,7 @@ import { formatCurrency } from '@/lib/formatters'
 import { ProductForm } from './components/ProductForm'
 import { ExcelImportModal } from './components/ExcelImportModal'
 import { excelProductService } from '@/services/products/excelProductService'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import {
   productService,
   ProductListItem,
@@ -74,6 +75,10 @@ export function ProductsPage() {
   const [priceAdjustType, setPriceAdjustType] = useState<'percent' | 'fixed' | 'set'>('percent')
   const [priceAdjustValue, setPriceAdjustValue] = useState('')
   const [isUpdatingPrices, setIsUpdatingPrices] = useState(false)
+
+  // Unified Delete Confirmation Dialog States
+  const [deleteProductTarget, setDeleteProductTarget] = useState<ProductListItem | null>(null)
+  const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false)
 
   useEffect(() => {
     loadFilterLookups()
@@ -176,22 +181,15 @@ export function ProductsPage() {
     }
   }
 
-  // Bulk Delete Handler
-  const handleBulkDelete = async () => {
+  // Bulk Delete Execution
+  const executeBulkDelete = async () => {
     if (selectedIds.size === 0) return
-    if (!window.confirm(isAr ? `هل أنت متأكد من حذف (${selectedIds.size}) منتج محدد؟ لا يمكن التراجع.` : `Delete ${selectedIds.size} selected products?`)) {
-      return
+    for (const id of selectedIds) {
+      await productService.deleteProduct(id, { id: user?.id || 'admin', fullName: user?.fullName || 'Admin' })
     }
-
-    try {
-      for (const id of selectedIds) {
-        await productService.deleteProduct(id, { id: user?.id || 'admin', fullName: user?.fullName || 'Admin' })
-      }
-      setSelectedIds(new Set())
-      await loadProducts()
-    } catch (err: any) {
-      alert(err.message || 'Bulk delete failed')
-    }
+    setSelectedIds(new Set())
+    setIsBulkDeleteOpen(false)
+    await loadProducts()
   }
 
   // Bulk Category Update Handler
@@ -295,17 +293,12 @@ export function ProductsPage() {
     }
   }
 
-  // Single Product Delete Handler
-  const handleDeleteSingle = async (p: ProductListItem) => {
-    if (!window.confirm(isAr ? `هل أنت متأكد من حذف المنتج "${p.name_ar}"؟` : `Delete product "${p.name_en}"?`)) {
-      return
-    }
-    try {
-      await productService.deleteProduct(p.id, { id: user?.id || 'admin', fullName: user?.fullName || 'Admin' })
-      await loadProducts()
-    } catch (err: any) {
-      alert(err.message || 'Delete failed')
-    }
+  // Single Product Delete Execution
+  const executeSingleDelete = async () => {
+    if (!deleteProductTarget) return
+    await productService.deleteProduct(deleteProductTarget.id, { id: user?.id || 'admin', fullName: user?.fullName || 'Admin' })
+    setDeleteProductTarget(null)
+    await loadProducts()
   }
 
   return (
@@ -491,7 +484,7 @@ export function ProductsPage() {
             {canDelete && (
               <button
                 type="button"
-                onClick={handleBulkDelete}
+                onClick={() => setIsBulkDeleteOpen(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-destructive/10 border border-destructive/20 hover:bg-destructive text-destructive hover:text-destructive-foreground rounded-lg text-xs font-semibold transition-colors"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -608,7 +601,7 @@ export function ProductsPage() {
                         {canDelete && (
                           <button
                             type="button"
-                            onClick={() => handleDeleteSingle(p)}
+                            onClick={() => setDeleteProductTarget(p)}
                             className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                             title={t('common.delete', 'حذف')}
                           >
@@ -823,6 +816,27 @@ export function ProductsPage() {
           </div>
         </div>
       )}
+
+      {/* Single Product Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!deleteProductTarget}
+        onClose={() => setDeleteProductTarget(null)}
+        onConfirm={executeSingleDelete}
+        title={isAr ? 'تأكيد حذف المنتج' : 'Confirm Product Deletion'}
+        itemName={deleteProductTarget ? (isAr ? deleteProductTarget.name_ar : deleteProductTarget.name_en) : ''}
+        confirmText={t('common.delete', 'حذف')}
+      />
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={isBulkDeleteOpen}
+        onClose={() => setIsBulkDeleteOpen(false)}
+        onConfirm={executeBulkDelete}
+        title={isAr ? 'تأكيد حذف المنتجات المحددة' : 'Confirm Bulk Product Deletion'}
+        itemCount={selectedIds.size}
+        itemsList={products.filter(p => selectedIds.has(p.id)).slice(0, 3).map(p => isAr ? p.name_ar : p.name_en)}
+        confirmText={t('common.delete', 'حذف')}
+      />
     </div>
   )
 }

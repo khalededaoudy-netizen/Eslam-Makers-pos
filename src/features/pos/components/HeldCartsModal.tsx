@@ -1,8 +1,9 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X, FolderOpen, Play, Trash2, Clock, User, ShoppingBag } from 'lucide-react'
 import { HeldCart } from '../types'
 import { formatCurrency, formatDate } from '@/lib/formatters'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 
 interface HeldCartsModalProps {
   isOpen: boolean
@@ -20,8 +21,18 @@ export function HeldCartsModal({
   onDeleteCart,
 }: HeldCartsModalProps) {
   const { t } = useTranslation()
+  const [deleteCartId, setDeleteCartId] = useState<string | null>(null)
 
   if (!isOpen) return null
+
+  const handleDelete = () => {
+    if (deleteCartId) {
+      onDeleteCart(deleteCartId)
+      setDeleteCartId(null)
+    }
+  }
+
+  const activeDeleteCart = heldCarts.find(c => c.id === deleteCartId)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
@@ -103,12 +114,8 @@ export function HeldCartsModal({
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
-                    onClick={() => {
-                      if (window.confirm(t('pos.confirmDeleteHeld', 'هل تريد بالتأكيد حذف هذه الفاتورة المعلقة؟'))) {
-                        onDeleteCart(cart.id)
-                      }
-                    }}
-                    className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                    onClick={() => setDeleteCartId(cart.id)}
+                    className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
                     title={t('common.delete', 'حذف')}
                   >
                     <Trash2 className="w-4 h-4" />
@@ -117,7 +124,7 @@ export function HeldCartsModal({
                   <button
                     type="button"
                     onClick={() => onResumeCart(cart)}
-                    className="px-3.5 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors flex items-center gap-1.5 shadow-sm"
+                    className="px-3.5 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
                   >
                     <Play className="w-3.5 h-3.5" />
                     <span>{t('pos.resume', 'استرجاع الفاتورة')}</span>
@@ -128,6 +135,18 @@ export function HeldCartsModal({
           )}
         </div>
       </div>
+
+      {/* Unified Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!deleteCartId}
+        onClose={() => setDeleteCartId(null)}
+        onConfirm={handleDelete}
+        title={t('pos.confirmDeleteHeldTitle', 'تأكيد حذف الفاتورة المعلقة')}
+        description={t('pos.confirmDeleteHeld', 'هل تريد بالتأكيد حذف هذه الفاتورة المعلقة؟')}
+        itemName={activeDeleteCart?.customer_name ? `فاتورة عميل: ${activeDeleteCart.customer_name}` : undefined}
+        itemCount={activeDeleteCart?.items?.length}
+        confirmText={t('common.delete', 'حذف')}
+      />
     </div>
   )
 }

@@ -4,23 +4,23 @@ Generated: 2026-09-29
 ================================================================================
 
 File:   MAKERS POS_1.0.0_x64_en-US.msi (Windows MSI Production Installer)
-Size:   6,336,512 bytes (6.04 MB)
-SHA256: 4C51B610F33AE5F50AB87D4B87C65F83ADA97E0BCE0A1D1AF4AEAE6BEE67C73E
+Size:   6,340,608 bytes (6.05 MB)
+SHA256: D097E9ADC234B01D0184D8D47E19EE75125D3F9D3F1F2F4FC22511B6112F837D
 --------------------------------------------------------------------------------
 File:   MAKERS POS_1.0.0_x64-setup.exe (Windows NSIS Setup Installer)
-Size:   4,738,261 bytes (4.52 MB)
-SHA256: 90971B0861D2913DB37FE4F0BBC21A219C7DB0523F8524043128CA5E9D1DA488
+Size:   4,744,682 bytes (4.52 MB)
+SHA256: C8C02C5767B9EA31BD3644F0E4854CBD7E1D0552FF24F93E273C4986BDACA61F
 --------------------------------------------------------------------------------
 File:   MAKERS POS.exe (Standalone Direct Executable)
-Size:   15,565,824 bytes (14.84 MB)
-SHA256: 69E682F2555F7DA9148AC2E99B942C91921AED9BD60D26EBCFDDDA68A3EB98EE
+Size:   15,569,920 bytes (14.85 MB)
+SHA256: F276DD8244F62344C42890DA701B7C8992A893BE143B1347EEAC8C47D09ED288
 --------------------------------------------------------------------------------
 File:   README.txt
 Size:   4,198 bytes
 SHA256: D3F1A12714E28CA7693A6C486B64CEEBB3A4C0284F4F93B232F931B38E83174D
 --------------------------------------------------------------------------------
 File:   INSTALLATION.txt
-Size:   3,139 bytes
+Size:   3,423 bytes
 SHA256: 829F024FE9264F5ED9AD070D1CF3BB269D2914DDA3BA9B66EC66479503784869
 --------------------------------------------------------------------------------
 File:   RECOVERY.txt

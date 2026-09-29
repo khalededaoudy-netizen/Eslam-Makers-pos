@@ -1,8 +1,9 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ShoppingCart, Trash2, ShoppingBag } from 'lucide-react'
 import { CartItem as CartItemType } from '@/stores/cartStore'
 import { CartItem } from './CartItem'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 
 interface CartProps {
   items: CartItemType[]
@@ -22,12 +23,11 @@ export function Cart({
   canDiscount = false,
 }: CartProps) {
   const { t } = useTranslation()
+  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false)
 
-  const handleClearWithConfirm = () => {
-    if (items.length === 0) return
-    if (window.confirm(t('pos.confirmClearCart', 'هل تريد بالتأكيد إفراغ سلة المشتريات الحالية؟'))) {
-      onClearCart()
-    }
+  const handleClear = () => {
+    onClearCart()
+    setIsClearConfirmOpen(false)
   }
 
   return (
@@ -47,8 +47,8 @@ export function Cart({
         {items.length > 0 && (
           <button
             type="button"
-            onClick={handleClearWithConfirm}
-            className="text-xs text-muted-foreground hover:text-destructive flex items-center gap-1 transition-colors px-2 py-1 rounded-md hover:bg-destructive/10"
+            onClick={() => setIsClearConfirmOpen(true)}
+            className="text-xs text-muted-foreground hover:text-destructive flex items-center gap-1 transition-colors px-2 py-1 rounded-md hover:bg-destructive/10 cursor-pointer"
           >
             <Trash2 className="w-3.5 h-3.5" />
             <span>{t('pos.clearCart', 'مسح السلة')}</span>
@@ -81,6 +81,18 @@ export function Cart({
           ))
         )}
       </div>
+
+      {/* Unified Clear Cart Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={isClearConfirmOpen}
+        onClose={() => setIsClearConfirmOpen(false)}
+        onConfirm={handleClear}
+        variant="danger"
+        title={t('pos.confirmClearCartTitle', 'تأكيد إفراغ السلة')}
+        description={t('pos.confirmClearCart', 'هل تريد بالتأكيد إفراغ سلة المشتريات الحالية؟')}
+        itemCount={items.length}
+        confirmText={t('pos.clearCart', 'إفراغ السلة')}
+      />
     </div>
   )
 }

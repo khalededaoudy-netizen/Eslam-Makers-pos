@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Zap, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { Zap, Eye, EyeOff, Loader2, Linkedin } from 'lucide-react'
 import { authService } from '@/services/auth/authService'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { openExternalUrl, DEVELOPER_LINKEDIN_URL } from '@/lib/openUrl'
 
 export function LoginPage() {
   const { t } = useTranslation()
@@ -165,9 +166,29 @@ export function LoginPage() {
         </div>
 
         {/* Footer */}
-        <p className="text-center text-xs text-muted-foreground mt-6">
-          MAKERS POS v1.0 — Electronics Store Management
-        </p>
+        <div className="text-center mt-6 space-y-1.5">
+          <p className="text-xs text-muted-foreground">
+            MAKERS POS v1.0 — {t('app.subtitle')}
+          </p>
+          <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground/80 flex-wrap">
+            <span>{t('auth.developerCredit')}</span>
+            <span className="text-muted-foreground/40">·</span>
+            <a
+              href={DEVELOPER_LINKEDIN_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => {
+                e.preventDefault()
+                openExternalUrl(DEVELOPER_LINKEDIN_URL)
+              }}
+              className="inline-flex items-center gap-1 text-primary hover:text-primary/80 hover:underline font-medium transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded px-0.5"
+              aria-label={`${t('auth.linkedin')} - Khaled Eldaoudy`}
+            >
+              <Linkedin className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>{t('auth.linkedin')}</span>
+            </a>
+          </div>
+        </div>
       </div>
     </div>
   )

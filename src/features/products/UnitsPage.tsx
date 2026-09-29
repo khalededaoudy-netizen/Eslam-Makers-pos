@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Scale, Edit2, Trash2 } from 'lucide-react'
 import { productService, UnitItem } from '@/services/products/productService'
 import { useAuthStore, usePermission } from '@/stores/authStore'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 
 export function UnitsPage() {
   const { t } = useTranslation()
@@ -16,6 +17,9 @@ export function UnitsPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // Unified Delete Confirmation State
+  const [deleteUnitTarget, setDeleteUnitTarget] = useState<UnitItem | null>(null)
+
   useEffect(() => { loadUnits() }, [])
 
   async function loadUnits() {
@@ -25,6 +29,13 @@ export function UnitsPage() {
     } catch (err) {
       console.error('Failed to load units:', err)
     }
+  }
+
+  async function executeDeleteUnit() {
+    if (!deleteUnitTarget) return
+    await productService.deleteUnit(deleteUnitTarget.id, { id: user?.id, fullName: user?.fullName })
+    setDeleteUnitTarget(null)
+    await loadUnits()
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -197,13 +208,9 @@ export function UnitsPage() {
                                 <Edit2 className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={async () => {
-                                  if (window.confirm(t('common.confirm'))) {
-                                    await productService.deleteUnit(u.id, { id: user?.id, fullName: user?.fullName })
-                                    loadUnits()
-                                  }
-                                }}
-                                className="p-1.5 text-destructive hover:bg-destructive/10 bg-muted rounded-lg transition-colors"
+                                onClick={() => setDeleteUnitTarget(u)}
+                                className="p-1.5 text-destructive hover:bg-destructive/10 bg-muted rounded-lg transition-colors cursor-pointer"
+                                title={t('common.delete')}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -219,6 +226,16 @@ export function UnitsPage() {
           </div>
         </div>
       </div>
+
+      {/* Unified Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!deleteUnitTarget}
+        onClose={() => setDeleteUnitTarget(null)}
+        onConfirm={executeDeleteUnit}
+        title={t('units.confirmDelete', 'تأكيد حذف الوحدة')}
+        itemName={deleteUnitTarget?.name_ar || deleteUnitTarget?.name_en || deleteUnitTarget?.symbol}
+        confirmText={t('common.delete', 'حذف')}
+      />
     </div>
   )
 }

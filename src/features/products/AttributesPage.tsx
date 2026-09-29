@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Tag, Edit2, Trash2 } from 'lucide-react'
 import { productService, AttributeDefItem } from '@/services/products/productService'
 import { useAuthStore, usePermission } from '@/stores/authStore'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 
 export function AttributesPage() {
   const { t } = useTranslation()
@@ -16,6 +17,9 @@ export function AttributesPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // Unified Delete Confirmation State
+  const [deleteAttrTarget, setDeleteAttrTarget] = useState<AttributeDefItem | null>(null)
+
   useEffect(() => { loadAttributes() }, [])
 
   async function loadAttributes() {
@@ -25,6 +29,13 @@ export function AttributesPage() {
     } catch (err: any) {
       console.error('Failed to load attribute defs:', err)
     }
+  }
+
+  async function executeDeleteAttr() {
+    if (!deleteAttrTarget) return
+    await productService.deleteAttributeDef(deleteAttrTarget.id, { id: user?.id, fullName: user?.fullName })
+    setDeleteAttrTarget(null)
+    await loadAttributes()
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -182,13 +193,9 @@ export function AttributesPage() {
                                 <Edit2 className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={async () => {
-                                  if (window.confirm(t('common.confirm'))) {
-                                    await productService.deleteAttributeDef(a.id, { id: user?.id, fullName: user?.fullName })
-                                    loadAttributes()
-                                  }
-                                }}
-                                className="p-1.5 text-destructive hover:bg-destructive/10 bg-muted rounded-lg transition-colors"
+                                onClick={() => setDeleteAttrTarget(a)}
+                                className="p-1.5 text-destructive hover:bg-destructive/10 bg-muted rounded-lg transition-colors cursor-pointer"
+                                title={t('common.delete')}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -204,6 +211,16 @@ export function AttributesPage() {
           </div>
         </div>
       </div>
+
+      {/* Unified Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!deleteAttrTarget}
+        onClose={() => setDeleteAttrTarget(null)}
+        onConfirm={executeDeleteAttr}
+        title={t('attributes.confirmDelete', 'تأكيد حذف الخاصية')}
+        itemName={deleteAttrTarget?.name_ar || deleteAttrTarget?.name_en}
+        confirmText={t('common.delete', 'حذف')}
+      />
     </div>
   )
 }

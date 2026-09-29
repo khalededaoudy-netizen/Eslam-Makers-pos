@@ -38,6 +38,7 @@ import { productService, CategoryItem } from '@/services/products/productService
 import { BarcodeInput } from './components/BarcodeInput'
 import { Cart } from './components/Cart'
 import { CustomerSelector } from './components/CustomerSelector'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { CartSummary } from './components/CartSummary'
 import { HeldCartsModal } from './components/HeldCartsModal'
 import { CheckoutModal } from '@/features/sales/components/CheckoutModal'
@@ -72,6 +73,7 @@ export function PosPage() {
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false)
   const [activeReceipt, setActiveReceipt] = useState<ReceiptData | null>(null)
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
+  const [resumeConfirmTarget, setResumeConfirmTarget] = useState<HeldCart | null>(null)
 
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -228,17 +230,8 @@ export function PosPage() {
     }
   }
 
-  // Resume Cart Handler
-  const handleResumeCart = async (heldCart: HeldCart) => {
-    if (
-      cart.items.length > 0 &&
-      !window.confirm(
-        t('pos.confirmOverwriteActiveCart', 'توجد أصناف في السلة الحالية. هل تريد استبدالها بالفاتورة المعلقة؟')
-      )
-    ) {
-      return
-    }
-
+  // Resume Cart Execution
+  const executeResumeCart = async (heldCart: HeldCart) => {
     try {
       const res = await posService.resumeHeldCart(heldCart.id, user || undefined)
       cart.setItems(res.items)
@@ -257,6 +250,7 @@ export function PosPage() {
       if (heldCart.notes) cart.setNotes(heldCart.notes)
 
       setIsHeldModalOpen(false)
+      setResumeConfirmTarget(null)
       await refreshShiftAndHeld()
 
       if (res.stockWarnings.length > 0) {
@@ -265,6 +259,15 @@ export function PosPage() {
     } catch (err: any) {
       alert(err.message || 'Error resuming cart')
     }
+  }
+
+  // Resume Cart Handler
+  const handleResumeCart = async (heldCart: HeldCart) => {
+    if (cart.items.length > 0) {
+      setResumeConfirmTarget(heldCart)
+      return
+    }
+    await executeResumeCart(heldCart)
   }
 
   // Delete Held Cart Handler
@@ -608,6 +611,21 @@ export function PosPage() {
           }}
         />
       )}
+
+      {/* Unified Overwrite Cart Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={!!resumeConfirmTarget}
+        onClose={() => setResumeConfirmTarget(null)}
+        onConfirm={async () => {
+          if (resumeConfirmTarget) {
+            await executeResumeCart(resumeConfirmTarget)
+          }
+        }}
+        variant="warning"
+        title={t('pos.confirmOverwriteTitle', 'استبدال السلة الحالية')}
+        description={t('pos.confirmOverwriteActiveCart', 'توجد أصناف في السلة الحالية. هل تريد استبدالها بالفاتورة المعلقة؟')}
+        confirmText={t('common.confirm', 'استبدال')}
+      />
     </div>
   )
 }

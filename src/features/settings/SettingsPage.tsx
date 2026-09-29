@@ -20,12 +20,19 @@ import {
   RefreshCw,
   History,
   ShieldCheck,
+  Info,
+  Linkedin,
+  ArrowUpRight,
+  Code2,
+  Cpu,
+  Sparkles,
 } from 'lucide-react'
 import { useSettingsStore, Language, Theme, PaperWidth } from '@/stores/settingsStore'
 import { useAuthStore, usePermission } from '@/stores/authStore'
 import { backupService, BackupRecord } from '@/services/db/backupService'
+import { openExternalUrl, DEVELOPER_LINKEDIN_URL } from '@/lib/openUrl'
 
-type TabType = 'general' | 'store' | 'pos' | 'receipt' | 'barcode' | 'database'
+type TabType = 'general' | 'store' | 'pos' | 'receipt' | 'barcode' | 'database' | 'about'
 
 export function SettingsPage() {
   const { t } = useTranslation()
@@ -274,7 +281,7 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {canEdit && (
+        {canEdit && activeTab !== 'about' && (
           <button
             onClick={handleSave}
             disabled={isSaving}
@@ -381,6 +388,18 @@ export function SettingsPage() {
           >
             <Database className="w-4 h-4" />
             {t('settings.databaseBackup', 'قاعدة البيانات والنسخ')}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('about')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+              activeTab === 'about'
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            }`}
+          >
+            <Info className="w-4 h-4" />
+            {t('settings.about', 'عن النظام')}
           </button>
         </div>
 
@@ -988,6 +1007,116 @@ export function SettingsPage() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Tab 7: About / Credits */}
+        {activeTab === 'about' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            {/* System Overview Header Card */}
+            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm relative overflow-hidden">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 relative z-10">
+                <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center p-2.5 flex-shrink-0 shadow-inner">
+                  <img src="/logo.png" alt="MAKERS" className="w-full h-full object-contain" />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h2 className="text-xl font-bold text-foreground">MAKERS POS</h2>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary/15 text-primary border border-primary/20">
+                      v1.0.0
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                      {t('settings.releaseStatus')}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {t('settings.aboutDesc')}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Dedicated Developer / Credits Section */}
+            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-5">
+              <div className="flex items-center gap-2 pb-3 border-b border-border/60">
+                <Sparkles className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">
+                  {t('settings.developerSection')}
+                </h3>
+              </div>
+
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-primary/15 border border-primary/30 flex items-center justify-center text-primary flex-shrink-0 shadow-sm">
+                    <Code2 className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-base font-bold text-foreground">
+                      {t('settings.developerCredit')}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {settings.language === 'ar'
+                        ? 'هندسة وتطوير النظم والبرمجيات · MAKERS POS'
+                        : 'System Architecture & Full-Stack Development · MAKERS POS'}
+                    </p>
+                  </div>
+                </div>
+
+                <a
+                  href={DEVELOPER_LINKEDIN_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    openExternalUrl(DEVELOPER_LINKEDIN_URL)
+                  }}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs shadow-md transition-all group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98] w-fit"
+                  aria-label={`${t('settings.linkedinProfile')} - Khaled Eldaoudy`}
+                >
+                  <Linkedin className="w-4 h-4" aria-hidden="true" />
+                  <span>{t('settings.linkedinProfile')}</span>
+                  <ArrowUpRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 rtl:-scale-x-100 rtl:group-hover:-translate-x-0.5" aria-hidden="true" />
+                </a>
+              </div>
+            </div>
+
+            {/* Architecture & Tech Stack Specs */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-3">
+                <div className="flex items-center gap-2 text-primary">
+                  <HardDrive className="w-4 h-4" />
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-foreground">
+                    {t('settings.systemArchitecture')}
+                  </h4>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  {t('settings.systemArchitectureDesc')}
+                </p>
+                <div className="pt-2 flex items-center gap-2 text-xs text-emerald-500 font-medium">
+                  <ShieldCheck className="w-4 h-4 flex-shrink-0" />
+                  <span>{t('settings.offlineStorage')}</span>
+                </div>
+              </div>
+
+              <div className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-3">
+                <div className="flex items-center gap-2 text-primary">
+                  <Cpu className="w-4 h-4" />
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-foreground">
+                    {t('settings.techStack')}
+                  </h4>
+                </div>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {['Tauri v2 (Rust Core)', 'React 18', 'TypeScript', 'SQLite', 'Tailwind CSS', 'Drizzle ORM'].map(tag => (
+                    <span key={tag} className="px-2.5 py-1 rounded-lg bg-muted text-[11px] font-medium text-foreground border border-border/60">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground pt-1">
+                  {t('settings.allRightsReserved')}
+                </p>
+              </div>
+            </div>
           </div>
         )}
       </div>

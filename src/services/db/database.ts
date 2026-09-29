@@ -6,6 +6,7 @@
 import Database from '@tauri-apps/plugin-sql'
 import { isTauri } from '@tauri-apps/api/core'
 import { v4 as uuidv4 } from 'uuid'
+import { MAKERS_MASTER_CATEGORIES, normalizeCategoryName } from '../categories/makersCategories'
 
 let db: any = null
 
@@ -873,84 +874,98 @@ migrations.push({ version: 12, sql: MIGRATION_012 })
 export async function seedInitialData(adminPasswordHash: string): Promise<void> {
   const d = getDb()
 
-  // Seed Roles
-  const adminRoleId = uuidv4()
-  const managerRoleId = uuidv4()
-  const cashierRoleId = uuidv4()
+  // 1. Seed Roles idempotently
+  const existingRoles = await d.select<{ id: string; name: string }[]>('SELECT id, name FROM roles')
+  const roleMap = new Map(existingRoles.map(r => [r.name, r.id]))
 
-  await d.execute(
-    `INSERT OR IGNORE INTO roles (id, name, display_name, display_name_ar, is_system) VALUES
-     (?, 'admin', 'Administrator', 'مدير النظام', 1),
-     (?, 'manager', 'Manager', 'مدير', 1),
-     (?, 'cashier', 'Cashier', 'كاشير', 1)`,
-    [adminRoleId, managerRoleId, cashierRoleId]
-  )
+  const rolesToEnsure = [
+    { name: 'admin', displayName: 'Administrator', displayNameAr: 'مدير النظام' },
+    { name: 'manager', displayName: 'Manager', displayNameAr: 'مدير' },
+    { name: 'cashier', displayName: 'Cashier', displayNameAr: 'كاشير' },
+  ]
 
-  // Get actual role IDs (may already exist)
+  for (const r of rolesToEnsure) {
+    if (!roleMap.has(r.name)) {
+      const id = uuidv4()
+      await d.execute(
+        `INSERT INTO roles (id, name, display_name, display_name_ar, is_system) VALUES (?, ?, ?, ?, 1)`,
+        [id, r.name, r.displayName, r.displayNameAr]
+      )
+      roleMap.set(r.name, id)
+    }
+  }
+
+  // Reload actual roles
   const roles = await d.select<{ id: string; name: string }[]>('SELECT id, name FROM roles')
-  const adminId = roles.find(r => r.name === 'admin')!.id
+  const adminRoleId = roles.find(r => r.name === 'admin')?.id
 
-  // Seed Admin User
-  const adminUserId = uuidv4()
-  await d.execute(
-    `INSERT OR IGNORE INTO users (id, username, password_hash, full_name, full_name_ar, role_id)
-     VALUES (?, 'admin', ?, 'System Administrator', 'مدير النظام', ?)`,
-    [adminUserId, adminPasswordHash, adminId]
-  )
+  // 2. Seed Admin User idempotently
+  const existingAdmin = await d.select<{ id: string }[]>('SELECT id FROM users WHERE username = ?', ['admin'])
+  if (existingAdmin.length === 0 && adminRoleId) {
+    const adminUserId = uuidv4()
+    await d.execute(
+      `INSERT INTO users (id, username, password_hash, full_name, full_name_ar, role_id)
+       VALUES (?, 'admin', ?, 'System Administrator', 'مدير النظام', ?)`,
+      [adminUserId, adminPasswordHash, adminRoleId]
+    )
+  }
 
-  // Seed Granular Permissions for Roles
+  // 3. Seed Granular Permissions for Roles
   await ensureDefaultPermissions(d, roles)
 
-  // Seed Default Units
+  // 4. Seed Default Units idempotently
+  const existingUnits = await d.select<{ id: string; symbol: string; name_en: string }[]>('SELECT id, symbol, name_en FROM product_units')
+  const unitSymbols = new Set(existingUnits.map(u => (u.symbol || '').toLowerCase().trim()))
+  const unitNames = new Set(existingUnits.map(u => (u.name_en || '').toLowerCase().trim()))
+
   const units = [
-    { id: uuidv4(), nameAr: 'قطعة', nameEn: 'Piece', symbol: 'pcs', allowDecimal: 0 },
-    { id: uuidv4(), nameAr: 'متر', nameEn: 'Meter', symbol: 'm', allowDecimal: 1 },
-    { id: uuidv4(), nameAr: 'حزمة', nameEn: 'Pack', symbol: 'pk', allowDecimal: 0 },
-    { id: uuidv4(), nameAr: 'طقم', nameEn: 'Set', symbol: 'set', allowDecimal: 0 },
-    { id: uuidv4(), nameAr: 'لفة', nameEn: 'Roll', symbol: 'roll', allowDecimal: 0 },
-    { id: uuidv4(), nameAr: 'علبة', nameEn: 'Box', symbol: 'box', allowDecimal: 0 },
-    { id: uuidv4(), nameAr: 'زوج', nameEn: 'Pair', symbol: 'pr', allowDecimal: 0 },
-    { id: uuidv4(), nameAr: 'جرام', nameEn: 'Gram', symbol: 'g', allowDecimal: 1 },
-    { id: uuidv4(), nameAr: 'كيلوجرام', nameEn: 'Kilogram', symbol: 'kg', allowDecimal: 1 },
+    { nameAr: 'قطعة', nameEn: 'Piece', symbol: 'pcs', allowDecimal: 0 },
+    { nameAr: 'متر', nameEn: 'Meter', symbol: 'm', allowDecimal: 1 },
+    { nameAr: 'حزمة', nameEn: 'Pack', symbol: 'pk', allowDecimal: 0 },
+    { nameAr: 'طقم', nameEn: 'Set', symbol: 'set', allowDecimal: 0 },
+    { nameAr: 'لفة', nameEn: 'Roll', symbol: 'roll', allowDecimal: 0 },
+    { nameAr: 'علبة', nameEn: 'Box', symbol: 'box', allowDecimal: 0 },
+    { nameAr: 'زوج', nameEn: 'Pair', symbol: 'pr', allowDecimal: 0 },
+    { nameAr: 'جرام', nameEn: 'Gram', symbol: 'g', allowDecimal: 1 },
+    { nameAr: 'كيلوجرام', nameEn: 'Kilogram', symbol: 'kg', allowDecimal: 1 },
   ]
 
   for (const u of units) {
-    await d.execute(
-      `INSERT OR IGNORE INTO product_units (id, name_ar, name_en, symbol, allow_decimal)
-       VALUES (?, ?, ?, ?, ?)`,
-      [u.id, u.nameAr, u.nameEn, u.symbol, u.allowDecimal]
-    )
+    if (!unitSymbols.has(u.symbol.toLowerCase().trim()) && !unitNames.has(u.nameEn.toLowerCase().trim())) {
+      await d.execute(
+        `INSERT INTO product_units (id, name_ar, name_en, symbol, allow_decimal)
+         VALUES (?, ?, ?, ?, ?)`,
+        [uuidv4(), u.nameAr, u.nameEn, u.symbol, u.allowDecimal]
+      )
+      unitSymbols.add(u.symbol.toLowerCase().trim())
+    }
   }
 
-  // Seed Default Categories
-  const categories = [
-    { id: uuidv4(), nameAr: 'مقاومات', nameEn: 'Resistors', icon: 'zap', color: '#f59e0b' },
-    { id: uuidv4(), nameAr: 'مكثفات', nameEn: 'Capacitors', icon: 'battery', color: '#3b82f6' },
-    { id: uuidv4(), nameAr: 'دوائر متكاملة', nameEn: 'ICs & Microcontrollers', icon: 'cpu', color: '#8b5cf6' },
-    { id: uuidv4(), nameAr: 'وحدات Arduino', nameEn: 'Arduino Modules', icon: 'circuit-board', color: '#10b981' },
-    { id: uuidv4(), nameAr: 'وحدات ESP', nameEn: 'ESP Modules', icon: 'wifi', color: '#06b6d4' },
-    { id: uuidv4(), nameAr: 'ليد وإضاءة', nameEn: 'LEDs & Lighting', icon: 'lightbulb', color: '#f97316' },
-    { id: uuidv4(), nameAr: 'أسلاك وكابلات', nameEn: 'Wires & Cables', icon: 'cable', color: '#64748b' },
-    { id: uuidv4(), nameAr: 'حساسات', nameEn: 'Sensors', icon: 'activity', color: '#ec4899' },
-    { id: uuidv4(), nameAr: 'وحدات ريلاي', nameEn: 'Relay Modules', icon: 'toggle-left', color: '#84cc16' },
-    { id: uuidv4(), nameAr: 'شاشات', nameEn: 'Displays', icon: 'monitor', color: '#0ea5e9' },
-    { id: uuidv4(), nameAr: 'محركات', nameEn: 'Motors & Actuators', icon: 'rotate-cw', color: '#f43f5e' },
-    { id: uuidv4(), nameAr: 'أدوات', nameEn: 'Tools', icon: 'wrench', color: '#78716c' },
-    { id: uuidv4(), nameAr: 'PCB ولوحات', nameEn: 'PCBs & Breadboards', icon: 'layers', color: '#a78bfa' },
-    { id: uuidv4(), nameAr: 'مستلزمات لحام', nameEn: 'Soldering Supplies', icon: 'flame', color: '#fb923c' },
-    { id: uuidv4(), nameAr: 'طاقة وبطاريات', nameEn: 'Power & Batteries', icon: 'battery-charging', color: '#22c55e' },
-    { id: uuidv4(), nameAr: 'روبوتيكس', nameEn: 'Robotics', icon: 'bot', color: '#e879f9' },
-  ]
+  // 5. Seed Official MAKERS 35 Master Categories idempotently
+  const existingCats = await d.select<{ id: string; name_ar: string; name_en: string }[]>('SELECT id, name_ar, name_en FROM product_categories')
 
-  for (const c of categories) {
-    await d.execute(
-      `INSERT OR IGNORE INTO product_categories (id, name_ar, name_en, icon, color)
-       VALUES (?, ?, ?, ?, ?)`,
-      [c.id, c.nameAr, c.nameEn, c.icon, c.color]
-    )
+  for (const master of MAKERS_MASTER_CATEGORIES) {
+    const normEn = normalizeCategoryName(master.name_en)
+    const normAr = normalizeCategoryName(master.name_ar)
+
+    const match = existingCats.find(e => {
+      const eNormEn = normalizeCategoryName(e.name_en)
+      const eNormAr = normalizeCategoryName(e.name_ar)
+      return eNormEn === normEn || eNormAr === normAr
+    })
+
+    if (!match) {
+      const id = uuidv4()
+      await d.execute(
+        `INSERT INTO product_categories (id, name_ar, name_en, parent_id, description, color, icon, is_active, sort_order)
+         VALUES (?, ?, ?, NULL, ?, ?, ?, 1, ?)`,
+        [id, master.name_ar, master.name_en, master.description || 'MAKERS Master Category', master.color, master.icon, master.sort_order]
+      )
+      existingCats.push({ id, name_ar: master.name_ar, name_en: master.name_en })
+    }
   }
 
-  // Seed Default Settings
+  // 6. Seed Default Settings idempotently
   const defaultSettings = [
     ['store_name', 'MAKERS', 'general'],
     ['store_name_ar', 'ميكرز', 'general'],
@@ -985,72 +1000,92 @@ export async function seedInitialData(adminPasswordHash: string): Promise<void> 
     )
   }
 
-  // Seed Expense Categories
+  // 7. Seed Expense Categories idempotently
+  const existingExpCats = await d.select<{ id: string; name_en: string; name_ar: string }[]>('SELECT id, name_en, name_ar FROM expense_categories')
+  const expCatNamesEn = new Set(existingExpCats.map(e => (e.name_en || '').toLowerCase().trim()))
+
   const expCats = [
-    { id: uuidv4(), nameAr: 'كهرباء', nameEn: 'Electricity', icon: 'zap' },
-    { id: uuidv4(), nameAr: 'مواصلات', nameEn: 'Transportation', icon: 'truck' },
-    { id: uuidv4(), nameAr: 'صيانة', nameEn: 'Maintenance', icon: 'wrench' },
-    { id: uuidv4(), nameAr: 'مستلزمات', nameEn: 'Supplies', icon: 'package' },
-    { id: uuidv4(), nameAr: 'شحن وتوصيل', nameEn: 'Shipping', icon: 'package-2' },
-    { id: uuidv4(), nameAr: 'رواتب', nameEn: 'Salaries', icon: 'users' },
-    { id: uuidv4(), nameAr: 'إيجار', nameEn: 'Rent', icon: 'building' },
-    { id: uuidv4(), nameAr: 'متفرقات', nameEn: 'Miscellaneous', icon: 'more-horizontal' },
+    { nameAr: 'كهرباء', nameEn: 'Electricity', icon: 'zap' },
+    { nameAr: 'مواصلات', nameEn: 'Transportation', icon: 'truck' },
+    { nameAr: 'صيانة', nameEn: 'Maintenance', icon: 'wrench' },
+    { nameAr: 'مستلزمات', nameEn: 'Supplies', icon: 'package' },
+    { nameAr: 'شحن وتوصيل', nameEn: 'Shipping', icon: 'package-2' },
+    { nameAr: 'رواتب', nameEn: 'Salaries', icon: 'users' },
+    { nameAr: 'إيجار', nameEn: 'Rent', icon: 'building' },
+    { nameAr: 'متفرقات', nameEn: 'Miscellaneous', icon: 'more-horizontal' },
   ]
 
   for (const ec of expCats) {
+    if (!expCatNamesEn.has(ec.nameEn.toLowerCase().trim())) {
+      await d.execute(
+        `INSERT INTO expense_categories (id, name_ar, name_en, icon) VALUES (?, ?, ?, ?)`,
+        [uuidv4(), ec.nameAr, ec.nameEn, ec.icon]
+      )
+      expCatNamesEn.add(ec.nameEn.toLowerCase().trim())
+    }
+  }
+
+  // 8. Seed Default Cash Register idempotently
+  const existingRegisters = await d.select<{ id: string; name: string }[]>('SELECT id, name FROM cash_registers')
+  if (existingRegisters.length === 0) {
     await d.execute(
-      `INSERT OR IGNORE INTO expense_categories (id, name_ar, name_en, icon) VALUES (?, ?, ?, ?)`,
-      [ec.id, ec.nameAr, ec.nameEn, ec.icon]
+      `INSERT INTO cash_registers (id, name, name_ar) VALUES (?, 'Main Register', 'الكاشير الرئيسي')`,
+      [uuidv4()]
     )
   }
 
-  // Seed Default Cash Register
-  const registerId = uuidv4()
-  await d.execute(
-    `INSERT OR IGNORE INTO cash_registers (id, name, name_ar) VALUES (?, 'Main Register', 'الكاشير الرئيسي')`,
-    [registerId]
-  )
+  // 9. Seed Default Attribute Definitions idempotently
+  const existingAttrDefs = await d.select<{ id: string; name_en: string }[]>('SELECT id, name_en FROM product_attribute_defs')
+  const attrNamesEn = new Set(existingAttrDefs.map(a => (a.name_en || '').toLowerCase().trim()))
 
-  // Seed Default Attribute Definitions
   const attrDefs = [
-    { id: uuidv4(), nameAr: 'المقاومة', nameEn: 'Resistance', unit: 'Ω', dataType: 'text' },
-    { id: uuidv4(), nameAr: 'السعة', nameEn: 'Capacitance', unit: 'F', dataType: 'text' },
-    { id: uuidv4(), nameAr: 'الجهد', nameEn: 'Voltage', unit: 'V', dataType: 'text' },
-    { id: uuidv4(), nameAr: 'التيار', nameEn: 'Current', unit: 'A', dataType: 'text' },
-    { id: uuidv4(), nameAr: 'القدرة', nameEn: 'Power', unit: 'W', dataType: 'text' },
-    { id: uuidv4(), nameAr: 'اللون', nameEn: 'Color', unit: '', dataType: 'text' },
-    { id: uuidv4(), nameAr: 'الحجم', nameEn: 'Size', unit: 'mm', dataType: 'text' },
-    { id: uuidv4(), nameAr: 'التغليف', nameEn: 'Package', unit: '', dataType: 'text' },
-    { id: uuidv4(), nameAr: 'التردد', nameEn: 'Frequency', unit: 'Hz', dataType: 'text' },
-    { id: uuidv4(), nameAr: 'الطول', nameEn: 'Length', unit: 'mm', dataType: 'text' },
-    { id: uuidv4(), nameAr: 'القطر', nameEn: 'Diameter', unit: 'mm', dataType: 'text' },
-    { id: uuidv4(), nameAr: 'نوع الموصل', nameEn: 'Connector Type', unit: '', dataType: 'text' },
-    { id: uuidv4(), nameAr: 'عدد الأرجل', nameEn: 'Pin Count', unit: '', dataType: 'number' },
-    { id: uuidv4(), nameAr: 'رقم قطعة المُصنِّع', nameEn: 'MPN', unit: '', dataType: 'text' },
-    { id: uuidv4(), nameAr: 'التسامح', nameEn: 'Tolerance', unit: '%', dataType: 'text' },
+    { nameAr: 'المقاومة', nameEn: 'Resistance', unit: 'Ω', dataType: 'text' },
+    { nameAr: 'السعة', nameEn: 'Capacitance', unit: 'F', dataType: 'text' },
+    { nameAr: 'الجهد', nameEn: 'Voltage', unit: 'V', dataType: 'text' },
+    { nameAr: 'التيار', nameEn: 'Current', unit: 'A', dataType: 'text' },
+    { nameAr: 'القدرة', nameEn: 'Power', unit: 'W', dataType: 'text' },
+    { nameAr: 'اللون', nameEn: 'Color', unit: '', dataType: 'text' },
+    { nameAr: 'الحجم', nameEn: 'Size', unit: 'mm', dataType: 'text' },
+    { nameAr: 'التغليف', nameEn: 'Package', unit: '', dataType: 'text' },
+    { nameAr: 'التردد', nameEn: 'Frequency', unit: 'Hz', dataType: 'text' },
+    { nameAr: 'الطول', nameEn: 'Length', unit: 'mm', dataType: 'text' },
+    { nameAr: 'القطر', nameEn: 'Diameter', unit: 'mm', dataType: 'text' },
+    { nameAr: 'نوع الموصل', nameEn: 'Connector Type', unit: '', dataType: 'text' },
+    { nameAr: 'عدد الأرجل', nameEn: 'Pin Count', unit: '', dataType: 'number' },
+    { nameAr: 'رقم قطعة المُصنِّع', nameEn: 'MPN', unit: '', dataType: 'text' },
+    { nameAr: 'التسامح', nameEn: 'Tolerance', unit: '%', dataType: 'text' },
   ]
 
   for (const attr of attrDefs) {
-    await d.execute(
-      `INSERT OR IGNORE INTO product_attribute_defs (id, name_ar, name_en, unit, data_type) VALUES (?, ?, ?, ?, ?)`,
-      [attr.id, attr.nameAr, attr.nameEn, attr.unit, attr.dataType]
-    )
+    if (!attrNamesEn.has(attr.nameEn.toLowerCase().trim())) {
+      await d.execute(
+        `INSERT INTO product_attribute_defs (id, name_ar, name_en, unit, data_type) VALUES (?, ?, ?, ?, ?)`,
+        [uuidv4(), attr.nameAr, attr.nameEn, attr.unit, attr.dataType]
+      )
+      attrNamesEn.add(attr.nameEn.toLowerCase().trim())
+    }
   }
 
-  // Seed Default Storage Locations
+  // 10. Seed Default Storage Locations idempotently
+  const existingLocations = await d.select<{ id: string; code: string; name: string }[]>('SELECT id, code, name FROM storage_locations')
+  const locCodes = new Set(existingLocations.map(l => (l.code || '').toLowerCase().trim()))
+
   const defaultLocations = [
-    { id: uuidv4(), name: 'Main Store', nameAr: 'المحل الرئيسي', code: 'MAIN', description: 'Storefront and showroom displays' },
-    { id: uuidv4(), name: 'Main Warehouse', nameAr: 'المخزن الرئيسي', code: 'WH1', description: 'Back inventory warehouse' },
+    { name: 'Main Store', nameAr: 'المحل الرئيسي', code: 'MAIN', description: 'Storefront and showroom displays' },
+    { name: 'Main Warehouse', nameAr: 'المخزن الرئيسي', code: 'WH1', description: 'Back inventory warehouse' },
   ]
 
   for (const loc of defaultLocations) {
-    await d.execute(
-      `INSERT OR IGNORE INTO storage_locations (id, name, name_ar, code, description) VALUES (?, ?, ?, ?, ?)`,
-      [loc.id, loc.name, loc.nameAr, loc.code, loc.description]
-    )
+    if (!locCodes.has(loc.code.toLowerCase().trim())) {
+      await d.execute(
+        `INSERT INTO storage_locations (id, name, name_ar, code, description) VALUES (?, ?, ?, ?, ?)`,
+        [uuidv4(), loc.name, loc.nameAr, loc.code, loc.description]
+      )
+      locCodes.add(loc.code.toLowerCase().trim())
+    }
   }
 
-  console.log('✅ Seed data applied successfully.')
+  console.log('✅ Seed data applied idempotently.')
 }
 
 async function ensureDefaultPermissions(d: AppDatabase, roles: Array<{ id: string; name: string }>) {

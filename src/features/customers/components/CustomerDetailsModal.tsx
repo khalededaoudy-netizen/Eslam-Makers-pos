@@ -20,6 +20,7 @@ import {
 import { customerService, Customer, CustomerType } from '@/services/customers'
 import { formatCurrency, formatDate } from '@/lib/formatters'
 import { useAuthStore, usePermission } from '@/stores/authStore'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 
 interface CustomerDetailsModalProps {
   isOpen: boolean
@@ -52,6 +53,7 @@ export function CustomerDetailsModal({
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false)
 
   const canEdit = isAdmin || can('update', 'customers')
   const canDelete = isAdmin || can('delete', 'customers')
@@ -77,28 +79,23 @@ export function CustomerDetailsModal({
 
   if (!isOpen || !customerId) return null
 
-  const handleToggleArchive = async () => {
+  const executeToggleArchive = async () => {
     if (!customer) return
     const isCurrentlyArchived = customer.is_active === 0 || !!customer.archived_at
-    const confirmMsg = isCurrentlyArchived
-      ? t('customers.confirmReactivate', 'هل تريد بالتأكيد إعادة تفعيل حساب هذا العميل؟')
-      : t('customers.confirmArchive', 'هل تريد بالتأكيد أرشفة هذا العميل؟')
-
-    if (window.confirm(confirmMsg)) {
-      setActionLoading(true)
-      try {
-        if (isCurrentlyArchived) {
-          await customerService.reactivateCustomer(customer.id, user || undefined)
-        } else {
-          await customerService.archiveCustomer(customer.id, user || undefined)
-        }
-        await loadCustomer()
-        onStatusChanged?.()
-      } catch (err: any) {
-        alert(err.message || 'Error updating status')
-      } finally {
-        setActionLoading(false)
+    setActionLoading(true)
+    try {
+      if (isCurrentlyArchived) {
+        await customerService.reactivateCustomer(customer.id, user || undefined)
+      } else {
+        await customerService.archiveCustomer(customer.id, user || undefined)
       }
+      setIsConfirmOpen(false)
+      await loadCustomer()
+      onStatusChanged?.()
+    } catch (err: any) {
+      alert(err.message || 'Error updating status')
+    } finally {
+      setActionLoading(false)
     }
   }
 
@@ -355,7 +352,7 @@ export function CustomerDetailsModal({
 
               {canDelete && (
                 <button
-                  onClick={handleToggleArchive}
+                  onClick={() => setIsConfirmOpen(true)}
                   disabled={actionLoading}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
                     customer.is_active === 1 && !customer.archived_at
@@ -380,6 +377,35 @@ export function CustomerDetailsModal({
           </div>
         )}
       </div>
+
+      {/* Unified Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={isConfirmOpen}
+        onClose={() => setIsConfirmOpen(false)}
+        onConfirm={executeToggleArchive}
+        variant={customer?.is_active === 1 && !customer?.archived_at ? 'danger' : 'info'}
+        title={
+          customer?.is_active === 1 && !customer?.archived_at
+            ? t('customers.confirmArchiveTitle', 'تأكيد أرشفة العميل')
+            : t('customers.confirmReactivateTitle', 'تأكيد إعادة تفعيل العميل')
+        }
+        description={
+          customer?.is_active === 1 && !customer?.archived_at
+            ? t('customers.confirmArchive', 'هل تريد بالتأكيد أرشفة هذا العميل؟ لن يظهر في القوائم النشطة ونقطة البيع.')
+            : t('customers.confirmReactivate', 'هل تريد بالتأكيد إعادة تفعيل هذا العميل؟')
+        }
+        itemName={customer?.name}
+        confirmText={
+          customer?.is_active === 1 && !customer?.archived_at
+            ? t('customers.archive', 'أرشفة')
+            : t('customers.reactivate', 'إعادة تفعيل')
+        }
+        warningMessage={
+          customer?.is_active === 1 && !customer?.archived_at
+            ? undefined
+            : null as any
+        }
+      />
     </div>
   )
 }
