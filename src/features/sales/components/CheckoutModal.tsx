@@ -13,6 +13,8 @@ import {
   X,
   AlertCircle,
   Phone,
+  Copy,
+  Check,
 } from 'lucide-react'
 import { PAYMENT_METHODS, PaymentMethodType } from '@/features/payments/types'
 import { CreateSalePaymentInput } from '../types'
@@ -47,6 +49,8 @@ export function CheckoutModal({
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [rawErrorDetails, setRawErrorDetails] = useState<string | null>(null)
+  const [copiedError, setCopiedError] = useState(false)
 
   const refInputRef = useRef<HTMLInputElement>(null)
   const cashInputRef = useRef<HTMLInputElement>(null)
@@ -59,6 +63,8 @@ export function CheckoutModal({
       setReference('')
       setSaleNotes('')
       setError(null)
+      setRawErrorDetails(null)
+      setCopiedError(false)
       setLoading(false)
 
       setTimeout(() => {
@@ -72,6 +78,7 @@ export function CheckoutModal({
   useEffect(() => {
     if (!isOpen) return
     setError(null)
+    setRawErrorDetails(null)
     if (selectedMethod === 'cash') {
       setTimeout(() => {
         cashInputRef.current?.focus()
@@ -83,6 +90,50 @@ export function CheckoutModal({
       }, 50)
     }
   }, [selectedMethod, isOpen])
+
+  // Helper to format friendly user message based on technical error
+  const formatErrorMessage = (err: any): string => {
+    const rawMsg = err?.message || (typeof err === 'string' ? err : '')
+    const lower = rawMsg.toLowerCase()
+
+    if (
+      lower.includes('constraint') ||
+      lower.includes('sqlite error') ||
+      lower.includes('foreign key') ||
+      lower.includes('unique')
+    ) {
+      return isArabic
+        ? 'خطأ في حفظ البيانات — راجع الإعدادات'
+        : 'Database error — please check settings'
+    }
+    if (
+      lower.includes('insufficient stock') ||
+      lower.includes('الكمية غير متوفرة') ||
+      (lower.includes('stock') && lower.includes('requested'))
+    ) {
+      return isArabic
+        ? 'الكمية غير متوفرة في المخزون'
+        : 'Insufficient stock available'
+    }
+    if (lower.includes('shift') || lower.includes('وردية')) {
+      return isArabic ? 'يجب فتح وردية أولاً' : 'An active shift is required'
+    }
+    if (
+      lower.includes('cashier') ||
+      lower.includes('authenticated') ||
+      lower.includes('permission')
+    ) {
+      return isArabic
+        ? 'يجب تسجيل الدخول ككاشير لإتمام عملية البيع'
+        : 'Cashier authentication required'
+    }
+    if (rawMsg) {
+      return rawMsg
+    }
+    return isArabic
+      ? 'خطأ أثناء إتمام عملية البيع'
+      : 'Error completing checkout'
+  }
 
   // Single payment calculations
   const numCashReceived = parseFloat(cashReceived) || 0
@@ -101,9 +152,18 @@ export function CheckoutModal({
     1000,
   ].filter((val, idx, arr) => val >= totalDue && arr.indexOf(val) === idx).slice(0, 5)
 
+  // Copy error details to clipboard
+  const handleCopyError = () => {
+    if (!rawErrorDetails) return
+    navigator.clipboard.writeText(rawErrorDetails)
+    setCopiedError(true)
+    setTimeout(() => setCopiedError(false), 2000)
+  }
+
   // Final confirmation handler
   const handleConfirm = async () => {
     setError(null)
+    setRawErrorDetails(null)
 
     try {
       setLoading(true)
@@ -148,7 +208,10 @@ export function CheckoutModal({
       await onConfirmSale(paymentsToSubmit, saleNotes.trim() || undefined)
       onClose()
     } catch (err: any) {
-      setError(err.message || 'Error completing checkout')
+      console.error('[POS Checkout Error]:', err)
+      const details = err?.stack || err?.message || String(err)
+      setRawErrorDetails(details)
+      setError(formatErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -187,11 +250,33 @@ export function CheckoutModal({
           </button>
         </div>
 
-        {/* Error Banner */}
+        {/* Error Banner with Copy Details */}
         {error && (
-          <div className="mx-6 mt-4 p-3 bg-destructive/15 border border-destructive/30 rounded-xl text-destructive text-xs font-semibold flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
+          <div className="mx-6 mt-4 p-3 bg-destructive/15 border border-destructive/30 rounded-xl text-destructive text-xs font-semibold flex items-center justify-between gap-2 animate-fade-in">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span className="truncate">{error}</span>
+            </div>
+            {rawErrorDetails && (
+              <button
+                type="button"
+                onClick={handleCopyError}
+                className="shrink-0 px-2.5 py-1 bg-destructive/20 hover:bg-destructive/30 text-destructive rounded-lg text-[11px] font-medium flex items-center gap-1 transition-colors"
+                title={rawErrorDetails}
+              >
+                {copiedError ? (
+                  <>
+                    <Check className="w-3 h-3 text-emerald-600" />
+                    <span>{isArabic ? 'تم النسخ' : 'Copied'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3 h-3" />
+                    <span>{isArabic ? 'نسخ التفاصيل' : 'Copy Details'}</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
         )}
 
