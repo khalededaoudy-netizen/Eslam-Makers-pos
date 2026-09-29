@@ -28,6 +28,7 @@ import { MakersMappedProduct } from '@/services/makers/types'
 import { useAuthStore } from '@/stores/authStore'
 import { formatCurrency } from '@/lib/formatters'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { Banknote, Package } from 'lucide-react'
 
 interface MakersImportModalProps {
   isOpen: boolean
@@ -81,6 +82,11 @@ export function MakersImportModal({
   })
   const [importReport, setImportReport] = useState<ImportReport | null>(null)
 
+  // Bulk edit overrides
+  const [bulkSellingPrice, setBulkSellingPrice] = useState<string>('')
+  const [bulkPurchasePrice, setBulkPurchasePrice] = useState<string>('')
+  const [bulkStock, setBulkStock] = useState<string>('')
+
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // Check duplicate status for a list of products against local SQLite database
@@ -101,9 +107,11 @@ export function MakersImportModal({
       const querySql = `
         SELECT id, sku, external_sku, external_product_id, name_ar, name_en
         FROM products
-        WHERE external_product_id IN (${extPlaceholders})
-           OR external_sku IN (${skuPlaceholders})
-           OR sku IN (${skuPlaceholders})
+        WHERE is_active = 1 AND (
+          external_product_id IN (${extPlaceholders})
+          OR external_sku IN (${skuPlaceholders})
+          OR sku IN (${skuPlaceholders})
+        )
       `
 
       const params = [...extIds, ...skus, ...skus]
@@ -261,9 +269,16 @@ export function MakersImportModal({
       })
 
       try {
+        const sellingOverride = bulkSellingPrice.trim() ? parseFloat(bulkSellingPrice) : undefined
+        const purchaseOverride = bulkPurchasePrice.trim() ? parseFloat(bulkPurchasePrice) : undefined
+        const stockOverride = bulkStock.trim() ? parseFloat(bulkStock) : undefined
+
         const res = await importMakersProductDirect(db, prod, {
           userId: user?.id,
           purchasePriceRatio: 0.7,
+          sellingPriceOverride: sellingOverride,
+          purchasePriceOverride: purchaseOverride,
+          stockOverride: stockOverride,
         })
 
         if (res.status === 'success') {
@@ -285,6 +300,9 @@ export function MakersImportModal({
     setIsImporting(false)
     setImportReport(report)
     setSelectedProductIds(new Set())
+    setBulkSellingPrice('')
+    setBulkPurchasePrice('')
+    setBulkStock('')
     // Refresh status map
     await checkStatusForResults(results)
     onImportComplete()
@@ -419,6 +437,68 @@ export function MakersImportModal({
                   {t('makersImport.importSelected')} ({selectedProductIds.size})
                 </span>
               </button>
+            </div>
+          )}
+
+          {/* Bulk Edit Bar — shown when products are selected */}
+          {selectedProductIds.size > 0 && (
+            <div className="mt-3 pt-3 border-t border-border/60 space-y-2.5 animate-fade-in">
+              <div className="flex items-center gap-2 text-xs">
+                <Banknote className="w-4 h-4 text-primary shrink-0" />
+                <span className="font-bold text-foreground">
+                  {isArabic ? `تعديل أسعار وكمية (${selectedProductIds.size} محدد)` : `Edit Prices & Stock (${selectedProductIds.size} selected)`}
+                </span>
+                <span className="text-[10px] text-muted-foreground ms-auto">
+                  {isArabic ? 'اتركه فارغاً للقيمة الافتراضية' : 'Leave empty for defaults'}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-semibold text-muted-foreground">
+                    {t('makersImport.sellingPrice')}
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={bulkSellingPrice}
+                    onChange={(e) => setBulkSellingPrice(e.target.value)}
+                    placeholder={isArabic ? 'سعر الموقع' : 'Website price'}
+                    className="w-full px-2.5 py-1.5 text-xs font-mono rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-muted-foreground/50"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-semibold text-muted-foreground">
+                    {isArabic ? 'سعر الشراء' : 'Purchase Price'}
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={bulkPurchasePrice}
+                    onChange={(e) => setBulkPurchasePrice(e.target.value)}
+                    placeholder={isArabic ? 'سعر بيع × 0.7' : 'Sell × 0.7'}
+                    className="w-full px-2.5 py-1.5 text-xs font-mono rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-muted-foreground/50"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-semibold text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Package className="w-3 h-3" />
+                      {t('makersImport.quantity')}
+                    </span>
+                  </label>
+                  <input
+                    type="number"
+                    step="1"
+                    min="0"
+                    value={bulkStock}
+                    onChange={(e) => setBulkStock(e.target.value)}
+                    placeholder="0"
+                    className="w-full px-2.5 py-1.5 text-xs font-mono rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-muted-foreground/50"
+                  />
+                </div>
+              </div>
             </div>
           )}
         </div>

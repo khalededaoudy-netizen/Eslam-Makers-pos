@@ -60,7 +60,7 @@ export async function checkDuplicateProduct(
     const rows = await db.select<any[]>(
       `SELECT id, sku, name_ar, name_en, current_stock, selling_price, purchase_price, drawer_location, category_id
        FROM products
-       WHERE external_product_id = ?
+       WHERE is_active = 1 AND external_product_id = ?
        LIMIT 1`,
       [extId]
     )
@@ -78,7 +78,7 @@ export async function checkDuplicateProduct(
     const rows = await db.select<any[]>(
       `SELECT id, sku, name_ar, name_en, current_stock, selling_price, purchase_price, drawer_location, category_id
        FROM products
-       WHERE external_sku = ?
+       WHERE is_active = 1 AND external_sku = ?
        LIMIT 1`,
       [sku]
     )
@@ -97,7 +97,7 @@ export async function checkDuplicateProduct(
       `SELECT p.id, p.sku, p.name_ar, p.name_en, p.current_stock, p.selling_price, p.purchase_price, p.drawer_location, p.category_id
        FROM products p
        JOIN product_barcodes pb ON pb.product_id = p.id
-       WHERE pb.barcode = ?
+       WHERE p.is_active = 1 AND pb.barcode = ?
        LIMIT 1`,
       [sku]
     )
@@ -115,7 +115,7 @@ export async function checkDuplicateProduct(
     const rows = await db.select<any[]>(
       `SELECT id, sku, name_ar, name_en, current_stock, selling_price, purchase_price, drawer_location, category_id
        FROM products
-       WHERE sku = ?
+       WHERE is_active = 1 AND sku = ?
        LIMIT 1`,
       [sku]
     )
@@ -355,6 +355,9 @@ export async function importMakersProductDirect(
     purchasePriceRatio?: number
     defaultSupplierId?: string | null
     userId?: string | null
+    sellingPriceOverride?: number
+    purchasePriceOverride?: number
+    stockOverride?: number
   }
 ): Promise<{
   status: 'success' | 'duplicate' | 'error'
@@ -393,10 +396,18 @@ export async function importMakersProductDirect(
       imagePath = await downloadMakersProductImage(targetImageUrl, product.sku || String(product.id))
     }
 
-    // 5. Calculate default prices
-    const sellingPrice = product.websitePrice || 0
+    // 5. Calculate prices (use overrides if provided)
+    const defaultSellingPrice = product.websitePrice || 0
+    const sellingPrice = options?.sellingPriceOverride != null && options.sellingPriceOverride > 0
+      ? options.sellingPriceOverride
+      : defaultSellingPrice
     const ratio = options?.purchasePriceRatio ?? 0.7
-    const purchasePrice = Math.round(sellingPrice * ratio * 100) / 100
+    const purchasePrice = options?.purchasePriceOverride != null && options.purchasePriceOverride > 0
+      ? options.purchasePriceOverride
+      : Math.round(defaultSellingPrice * ratio * 100) / 100
+    const initialStock = options?.stockOverride != null && options.stockOverride >= 0
+      ? options.stockOverride
+      : 0
 
     // 6. Save product
     const payload: SaveImportedProductPayload = {
@@ -413,7 +424,7 @@ export async function importMakersProductDirect(
       unit_id: unitId,
       purchase_price: purchasePrice,
       selling_price: sellingPrice,
-      initial_quantity: 0,
+      initial_quantity: initialStock,
       min_stock: 0,
       drawer_location: null,
       footprint_package: product.footprintPackage,
