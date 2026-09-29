@@ -25,7 +25,7 @@ class PosService {
   /**
    * Fast Parameterized Product Search across Name (Ar/En), SKU, Barcodes, and Attributes
    */
-  async searchProducts(query: string, limit = 30): Promise<PosProduct[]> {
+  async searchProducts(query: string, limit = 40): Promise<PosProduct[]> {
     const trimmed = query.trim()
     if (!trimmed) return []
 
@@ -41,6 +41,8 @@ class PosService {
         p.selling_price,
         p.purchase_price,
         p.current_stock,
+        p.min_stock,
+        p.image_path,
         pu.symbol as unit_symbol,
         pu.allow_decimal,
         p.drawer_location,
@@ -95,6 +97,8 @@ class PosService {
         p.selling_price,
         p.purchase_price,
         p.current_stock,
+        p.min_stock,
+        p.image_path,
         pu.symbol as unit_symbol,
         pu.allow_decimal,
         p.drawer_location,
@@ -110,6 +114,49 @@ class PosService {
     `, params)
 
     return rows
+  }
+
+  /**
+   * Get top selling products for POS Quick Access Best Sellers panel
+   */
+  async getBestSellers(limit = 10): Promise<PosProduct[]> {
+    const db = getDb()
+    try {
+      const rows = await db.select<PosProduct[]>(`
+        SELECT
+          p.id,
+          p.name_ar,
+          p.name_en,
+          p.sku,
+          p.selling_price,
+          p.purchase_price,
+          p.current_stock,
+          p.min_stock,
+          p.image_path,
+          pu.symbol as unit_symbol,
+          pu.allow_decimal,
+          p.drawer_location,
+          pc.name_ar as category_name,
+          COALESCE(SUM(si.quantity), 0) as total_sold
+        FROM sale_items si
+        JOIN products p ON p.id = si.product_id
+        JOIN product_units pu ON pu.id = p.unit_id
+        LEFT JOIN product_categories pc ON pc.id = p.category_id
+        WHERE p.is_active = 1
+        GROUP BY si.product_id
+        ORDER BY total_sold DESC
+        LIMIT ?
+      `, [limit])
+
+      if (rows && rows.length > 0) {
+        return rows
+      }
+    } catch (err) {
+      console.warn('Error fetching best sellers from sale_items, fallback to recent products:', err)
+    }
+
+    // Fallback if no sales yet: return first 10 active products
+    return this.getProductsByCategory(undefined, limit)
   }
 
   /**
@@ -129,6 +176,8 @@ class PosService {
         p.selling_price,
         p.purchase_price,
         p.current_stock,
+        p.min_stock,
+        p.image_path,
         pu.symbol as unit_symbol,
         pu.allow_decimal,
         p.drawer_location,
@@ -144,6 +193,7 @@ class PosService {
 
     return rows && rows.length > 0 ? rows[0] : null
   }
+
 
   /**
    * Get fresh authoritative stock for a product from SQLite

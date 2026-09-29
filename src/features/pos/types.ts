@@ -10,12 +10,16 @@ export interface PosProduct {
   selling_price: number
   purchase_price: number
   current_stock: number
+  min_stock?: number
+  image_path?: string | null
   unit_symbol: string
   allow_decimal: number
   barcode?: string | null
   drawer_location?: string | null
   category_name?: string | null
+  total_sold?: number
 }
+
 
 export interface PosCartItem {
   id: string

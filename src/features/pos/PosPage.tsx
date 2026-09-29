@@ -28,6 +28,9 @@ import {
   Grid,
   Tag,
   Loader2,
+  TrendingUp,
+  Sparkles,
+  Award,
 } from 'lucide-react'
 import { useCartStore, CustomerSummary } from '@/stores/cartStore'
 import { useAuthStore, usePermission } from '@/stores/authStore'
@@ -35,6 +38,7 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { posService } from './posService'
 import { PosProduct, PosCartSummary, HeldCart, PosShiftInfo } from './types'
 import { productService, CategoryItem } from '@/services/products/productService'
+import { ProductImage } from '@/components/common/ProductImage'
 import { BarcodeInput } from './components/BarcodeInput'
 import { Cart } from './components/Cart'
 import { CustomerSelector } from './components/CustomerSelector'
@@ -61,6 +65,7 @@ export function PosPage() {
   const [categories, setCategories] = useState<CategoryItem[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [gridProducts, setGridProducts] = useState<PosProduct[]>([])
+  const [bestSellers, setBestSellers] = useState<PosProduct[]>([])
   const [loadingGrid, setLoadingGrid] = useState(false)
 
   const [searchQuery, setSearchQuery] = useState('')
@@ -90,6 +95,16 @@ export function PosPage() {
     cart.setTaxConfig(taxEnabled, taxRate)
   }, [taxEnabled, taxRate])
 
+  // Load Best Sellers
+  const loadBestSellers = useCallback(async () => {
+    try {
+      const topItems = await posService.getBestSellers(10)
+      setBestSellers(topItems)
+    } catch (err) {
+      console.error('Failed to load best sellers for POS:', err)
+    }
+  }, [])
+
   // Check active shift & load held carts on mount
   const refreshShiftAndHeld = useCallback(async () => {
     try {
@@ -97,12 +112,13 @@ export function PosPage() {
       setShiftInfo(shift)
       const list = await posService.getHeldCarts()
       setHeldCarts(list)
+      await loadBestSellers()
     } catch (err) {
       console.error('POS initialization error:', err)
     } finally {
       setCheckingShift(false)
     }
-  }, [user?.id])
+  }, [user?.id, loadBestSellers])
 
   // Load Categories
   useEffect(() => {
@@ -140,22 +156,68 @@ export function PosPage() {
     loadGridProducts(selectedCategory, searchQuery)
   }, [selectedCategory, searchQuery, loadGridProducts])
 
-  // Keyboard Shortcuts (F2 -> Focus Search, Escape -> Clear Search)
+  // Keyboard Shortcuts: F2 (Focus Search), F3 (Hold Cart), F4 (Checkout), Escape (Close Modal / Clear Search)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape: Close active modals or clear search
+      if (e.key === 'Escape') {
+        if (customerLookupOpen) {
+          setCustomerLookupOpen(false)
+          return
+        }
+        if (checkoutModalOpen) {
+          setCheckoutModalOpen(false)
+          return
+        }
+        if (isHeldModalOpen) {
+          setIsHeldModalOpen(false)
+          return
+        }
+        if (receiptModalOpen) {
+          setReceiptModalOpen(false)
+          return
+        }
+        if (searchQuery) {
+          setSearchQuery('')
+          return
+        }
+      }
+
+      // F2: Focus and select search input
       if (e.key === 'F2') {
         e.preventDefault()
         searchInputRef.current?.focus()
+        searchInputRef.current?.select()
       }
-      if (e.key === 'Escape') {
-        if (searchQuery) {
-          setSearchQuery('')
+
+      // F3: Hold active cart
+      if (e.key === 'F3') {
+        e.preventDefault()
+        if (canHold && cart.items.length > 0) {
+          handleHoldCart()
+        }
+      }
+
+      // F4: Open checkout
+      if (e.key === 'F4') {
+        e.preventDefault()
+        if (cart.items.length > 0 && shiftInfo.isOpen) {
+          handleOpenCheckout()
         }
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [searchQuery])
+  }, [
+    searchQuery,
+    canHold,
+    cart.items.length,
+    shiftInfo.isOpen,
+    customerLookupOpen,
+    checkoutModalOpen,
+    isHeldModalOpen,
+    receiptModalOpen,
+  ])
 
   // Add Product to Cart Handler
   const handleAddProduct = useCallback(
@@ -347,6 +409,7 @@ export function PosPage() {
     setCheckoutModalOpen(false)
     cart.clearCart()
     loadGridProducts(selectedCategory, searchQuery)
+    loadBestSellers()
   }
 
   const totals = posService.calculateTotals(
@@ -393,17 +456,23 @@ export function PosPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t('pos.searchProducts', 'بحث عن صنف بالاسم، الكود، الباركود (F2)...')}
-                className="w-full h-11 ps-9 pe-9 rounded-xl bg-input border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                className="w-full h-11 ps-9 pe-16 rounded-xl bg-input border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute end-3 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
+              <div className="absolute end-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="p-1 text-muted-foreground hover:text-foreground rounded"
+                    title="Clear (Esc)"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono font-bold text-muted-foreground bg-muted border border-border rounded shadow-xs select-none">
+                  F2
+                </kbd>
+              </div>
             </div>
 
             {/* Barcode Scanner Auto-Add Input */}
@@ -476,49 +545,70 @@ export function PosPage() {
                 <p className="text-sm font-semibold">{isArabic ? 'لا توجد منتجات في هذا التصنيف' : 'No products found'}</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                 {gridProducts.map((product) => {
-                  const isLowStock = product.current_stock <= 5
+                  const minStock = product.min_stock ?? 0
                   const isOutOfStock = product.current_stock <= 0
+                  const isLowStock = !isOutOfStock && product.current_stock <= minStock
+
                   return (
                     <button
                       key={product.id}
                       type="button"
                       disabled={isOutOfStock}
                       onClick={() => handleAddProduct(product)}
-                      className={`p-3 bg-card border border-border rounded-xl text-start flex flex-col justify-between transition-all hover:border-primary/50 hover:shadow-md active:scale-[0.98] ${
-                        isOutOfStock ? 'opacity-50 cursor-not-allowed' : ''
+                      className={`group p-2.5 bg-card border border-border rounded-2xl text-start flex flex-col justify-between transition-all hover:border-primary/50 hover:shadow-md active:scale-[0.98] relative overflow-hidden ${
+                        isOutOfStock ? 'opacity-50 cursor-not-allowed bg-muted/30' : ''
                       }`}
                     >
-                      <div>
-                        <div className="flex items-center justify-between gap-1 mb-1">
-                          <span className="text-[10px] font-mono text-muted-foreground truncate">
-                            {product.sku}
-                          </span>
-                          <span
-                            className={`text-[9px] font-mono px-1.5 py-0.5 rounded-full font-bold ${
-                              isOutOfStock
-                                ? 'bg-destructive/15 text-destructive'
-                                : isLowStock
-                                ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
-                                : 'bg-emerald-500/10 text-emerald-600'
-                            }`}
-                          >
-                            {isOutOfStock ? (isArabic ? 'نفذ' : '0') : `${product.current_stock} ${product.unit_symbol || ''}`}
-                          </span>
-                        </div>
+                      {/* Top Product Image with absolute stock badge */}
+                      <div className="relative w-full h-24 rounded-xl bg-muted/50 border border-border/60 flex items-center justify-center overflow-hidden mb-2 p-1">
+                        <ProductImage
+                          src={product.image_path}
+                          alt={product.name_en || product.name_ar}
+                          fallbackType="package"
+                          className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-200"
+                          iconClassName="w-8 h-8 opacity-25 text-muted-foreground"
+                        />
 
-                        <h4 className="font-bold text-xs text-foreground line-clamp-2 leading-tight">
-                          {isArabic ? product.name_ar : product.name_en || product.name_ar}
-                        </h4>
+                        {/* Stock badge top-end */}
+                        <span
+                          className={`absolute top-1.5 end-1.5 text-[9px] font-mono px-1.5 py-0.5 rounded-full font-bold shadow-sm backdrop-blur-md ${
+                            isOutOfStock
+                              ? 'bg-destructive text-destructive-foreground'
+                              : isLowStock
+                              ? 'bg-amber-500 text-amber-950 font-black'
+                              : 'bg-emerald-600 text-white'
+                          }`}
+                        >
+                          {isOutOfStock ? (isArabic ? 'نفذ' : '0') : `${product.current_stock} ${product.unit_symbol || ''}`}
+                        </span>
                       </div>
 
-                      <div className="mt-3 pt-2 border-t border-border/60 flex items-center justify-between">
-                        <span className="text-xs font-mono font-black text-foreground">
-                          {formatCurrency(product.selling_price, currencySymbol)}
-                        </span>
-                        <div className="w-6 h-6 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-                          <Plus className="w-3.5 h-3.5" />
+                      {/* Product Identity */}
+                      <div className="flex-1 flex flex-col justify-between">
+                        <div className="mb-1">
+                          <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground mb-0.5">
+                            <span className="truncate max-w-[90px]">{product.sku}</span>
+                            {product.drawer_location && (
+                              <span className="text-[9px] bg-muted px-1 rounded truncate max-w-[50px]">
+                                {product.drawer_location}
+                              </span>
+                            )}
+                          </div>
+                          <h4 className="font-bold text-xs text-foreground line-clamp-2 leading-tight group-hover:text-primary transition-colors">
+                            {isArabic ? product.name_ar : product.name_en || product.name_ar}
+                          </h4>
+                        </div>
+
+                        {/* Bottom Price & Add Button */}
+                        <div className="mt-2 pt-2 border-t border-border/60 flex items-center justify-between">
+                          <span className="text-xs font-mono font-black text-foreground">
+                            {formatCurrency(product.selling_price, currencySymbol)}
+                          </span>
+                          <div className="w-6 h-6 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground flex items-center justify-center transition-colors">
+                            <Plus className="w-3.5 h-3.5" />
+                          </div>
                         </div>
                       </div>
                     </button>
@@ -527,6 +617,55 @@ export function PosPage() {
               </div>
             )}
           </div>
+
+          {/* Best Sellers Panel at bottom of products column */}
+          {bestSellers.length > 0 && (
+            <div className="p-3 border-t border-border bg-card/60 shrink-0">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                  <TrendingUp className="w-3.5 h-3.5 text-amber-500" />
+                  <span>{isArabic ? 'الأكثر طلباً ومبيعاً' : 'Best Sellers'}</span>
+                </div>
+                <span className="text-[10px] text-muted-foreground">
+                  {isArabic ? 'إضافة سريعة للسلة' : '1-click quick add'}
+                </span>
+              </div>
+
+              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                {bestSellers.map((prod) => (
+                  <button
+                    key={prod.id}
+                    type="button"
+                    disabled={prod.current_stock <= 0}
+                    onClick={() => handleAddProduct(prod)}
+                    className="flex-shrink-0 w-44 p-2 rounded-xl bg-card border border-border/80 hover:border-primary/50 hover:shadow-sm flex items-center gap-2 text-start transition-all disabled:opacity-40"
+                  >
+                    <div className="w-10 h-10 rounded-lg bg-muted/60 border border-border flex items-center justify-center shrink-0 overflow-hidden p-0.5">
+                      <ProductImage
+                        src={prod.image_path}
+                        alt={prod.name_en || prod.name_ar}
+                        fallbackType="cpu"
+                        iconClassName="w-5 h-5 text-muted-foreground/30"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h5 className="text-[11px] font-bold text-foreground truncate leading-tight">
+                        {isArabic ? prod.name_ar : prod.name_en || prod.name_ar}
+                      </h5>
+                      <div className="flex items-center justify-between mt-0.5">
+                        <span className="text-[11px] font-mono font-bold text-primary">
+                          {formatCurrency(prod.selling_price, currencySymbol)}
+                        </span>
+                        <span className="text-[9px] font-mono text-muted-foreground">
+                          {prod.current_stock}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right Column: Active Cart, Customer Selector, Payment & Checkout (5 cols) */}
@@ -576,9 +715,13 @@ export function PosPage() {
                   disabled={cart.items.length === 0}
                   onClick={handleHoldCart}
                   className="flex-1 h-11 rounded-xl border border-border bg-muted hover:bg-muted/80 text-foreground font-bold text-xs flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                  title="Shortcut: F3"
                 >
                   <FolderOpen className="w-4 h-4 text-primary" />
                   <span>{t('pos.holdCart', 'تعليق الفاتورة')}</span>
+                  <kbd className="hidden sm:inline-block px-1.5 py-0.2 text-[9px] font-mono bg-card border border-border rounded text-muted-foreground">
+                    F3
+                  </kbd>
                 </button>
               )}
 
@@ -587,9 +730,13 @@ export function PosPage() {
                 disabled={cart.items.length === 0 || !shiftInfo.isOpen}
                 onClick={handleOpenCheckout}
                 className="flex-[2] h-11 rounded-xl bg-primary text-primary-foreground font-black text-sm hover:bg-primary/90 transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                title="Shortcut: F4"
               >
                 <ShoppingCart className="w-4 h-4" />
                 <span>{t('pos.checkout', 'الدفع والتحصيل')} ({formatCurrency(totals.total, currencySymbol)})</span>
+                <kbd className="hidden sm:inline-block px-1.5 py-0.2 text-[9px] font-mono bg-black/20 text-white rounded">
+                  F4
+                </kbd>
               </button>
             </div>
           </div>
