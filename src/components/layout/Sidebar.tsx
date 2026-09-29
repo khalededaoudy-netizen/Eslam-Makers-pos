@@ -23,19 +23,19 @@ const navGroups = [
     items: [
       { key: 'pos', label: 'nav.pos', icon: ShoppingCart, path: '/pos', permission: { resource: 'pos', action: 'access' } },
       { key: 'sales', label: 'nav.sales', icon: Receipt, path: '/sales', permission: { resource: 'sales', action: 'read' } },
-      { key: 'returns', label: 'nav.returns', icon: RefreshCw, path: '/returns', permission: { resource: 'returns', action: 'create' } },
+      { key: 'returns', label: 'nav.returns', icon: RefreshCw, path: '/returns', permission: { resource: 'returns', action: 'read' } },
     ]
   },
   {
     label: 'products.title',
     items: [
       { key: 'products', label: 'nav.products', icon: Package, path: '/products', permission: { resource: 'products', action: 'read' } },
-      { key: 'categories', label: 'products.categories', icon: Package, path: '/products/categories', permission: { resource: 'products', action: 'read' } },
-      { key: 'brands', label: 'brands.title', icon: Award, path: '/products/brands', permission: { resource: 'products', action: 'read' } },
-      { key: 'attributes', label: 'products.attributes', icon: Package, path: '/products/attributes', permission: { resource: 'products', action: 'read' } },
-      { key: 'units', label: 'products.units', icon: Package, path: '/products/units', permission: { resource: 'products', action: 'read' } },
+      { key: 'categories', label: 'products.categories', icon: Package, path: '/products/categories', permission: { resource: 'products', action: 'update' } },
+      { key: 'brands', label: 'brands.title', icon: Award, path: '/products/brands', permission: { resource: 'products', action: 'update' } },
+      { key: 'attributes', label: 'products.attributes', icon: Package, path: '/products/attributes', permission: { resource: 'products', action: 'update' } },
+      { key: 'units', label: 'products.units', icon: Package, path: '/products/units', permission: { resource: 'products', action: 'update' } },
       { key: 'inventory', label: 'nav.inventory', icon: Archive, path: '/inventory', permission: { resource: 'inventory', action: 'read' } },
-      { key: 'barcodes', label: 'nav.barcodes', icon: Scan, path: '/barcodes', permission: { resource: 'barcodes', action: 'read' } },
+      { key: 'barcodes', label: 'nav.barcodes', icon: Scan, path: '/barcodes', permission: { resource: 'barcodes', action: 'create' } },
     ]
   },
   {
@@ -115,18 +115,18 @@ export function Sidebar({ collapsed, onCollapse }: SidebarProps) {
 
   return (
     <aside
-      className={`sidebar flex flex-col h-screen transition-all duration-300 ease-in-out relative ${
+      className={`sidebar flex flex-col h-screen bg-sidebar text-sidebar-foreground border-e border-sidebar-border transition-all duration-300 ease-in-out relative ${
         collapsed ? 'w-16' : 'w-64'
       }`}
     >
       {/* Logo */}
-      <div className={`flex items-center gap-3 p-4 border-b border-[hsl(var(--sidebar-border))] ${collapsed ? 'justify-center' : ''}`}>
+      <div className={`flex items-center gap-3 p-4 border-b border-sidebar-border ${collapsed ? 'justify-center' : ''}`}>
         <div className="flex-shrink-0 flex items-center justify-center">
           <img src="/logo.png" alt="MAKERS" className="w-9 h-9 object-contain" />
         </div>
         {!collapsed && (
           <div className="animate-fade-in min-w-0">
-            <p className="font-bold text-foreground text-sm leading-none">{t('app.name')}</p>
+            <p className="font-bold text-sidebar-foreground text-sm leading-none">{t('app.name')}</p>
             <p className="text-[10px] text-muted-foreground truncate mt-0.5 leading-none">
               {isRTL ? 'مكونات إلكترونية' : 'Electronics Store'}
             </p>
@@ -171,7 +171,7 @@ export function Sidebar({ collapsed, onCollapse }: SidebarProps) {
                                 transition-all duration-150 group relative
                                 ${active
                                   ? 'bg-primary/15 text-primary font-medium'
-                                  : 'text-muted-foreground hover:bg-[hsl(var(--sidebar-item-hover))] hover:text-foreground'
+                                  : 'text-muted-foreground hover:bg-sidebar-hover hover:text-sidebar-foreground'
                                 }
                                 ${collapsed ? 'justify-center' : ''}`}
                   >
@@ -204,14 +204,14 @@ export function Sidebar({ collapsed, onCollapse }: SidebarProps) {
       </nav>
 
       {/* User */}
-      <div className={`border-t border-[hsl(var(--sidebar-border))] p-3 ${collapsed ? 'flex justify-center' : ''}`}>
+      <div className={`border-t border-sidebar-border p-3 ${collapsed ? 'flex justify-center' : ''}`}>
         {!collapsed ? (
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0">
               <User className="w-4 h-4 text-primary" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate text-foreground">
+              <p className="text-sm font-medium truncate text-sidebar-foreground">
                 {language === 'ar' ? (user?.fullNameAr ?? user?.fullName) : user?.fullName}
               </p>
               <p className="text-xs text-muted-foreground capitalize">{user?.roleName}</p>

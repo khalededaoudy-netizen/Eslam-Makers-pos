@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
+import { Header } from './Header'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { usePermission } from '@/stores/authStore'
@@ -43,10 +44,13 @@ function HomeDispatcher() {
   if (isAdmin || can('read', 'dashboard')) {
     return <DashboardPage />
   }
-  if (can('access', 'pos') || can('create', 'pos')) {
+  if (can('access', 'pos') || can('create', 'pos') || can('sale', 'pos')) {
     return <Navigate to="/pos" replace />
   }
-  return <Navigate to="/products" replace />
+  if (can('read', 'products')) {
+    return <Navigate to="/products" replace />
+  }
+  return <Navigate to="/pos" replace />
 }
 
 export function AppShell() {
@@ -64,31 +68,34 @@ export function AppShell() {
 
       {/* Main content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <React.Suspense fallback={<PageLoader />}>
-          <Routes>
-            <Route path="/"              element={<HomeDispatcher />} />
-            <Route path="/pos"           element={<ProtectedRoute resource="pos" action="access"><PosPage /></ProtectedRoute>} />
-            <Route path="/products"      element={<ProtectedRoute resource="products" action="read"><ProductsPage /></ProtectedRoute>} />
-            <Route path="/products/categories" element={<ProtectedRoute resource="products" action="read"><CategoriesPage /></ProtectedRoute>} />
-            <Route path="/products/brands"     element={<ProtectedRoute resource="products" action="read"><BrandsPage /></ProtectedRoute>} />
-            <Route path="/products/units"      element={<ProtectedRoute resource="products" action="read"><UnitsPage /></ProtectedRoute>} />
-            <Route path="/products/attributes" element={<ProtectedRoute resource="products" action="read"><AttributesPage /></ProtectedRoute>} />
-            <Route path="/inventory/*"   element={<ProtectedRoute resource="inventory" action="read"><InventoryPage /></ProtectedRoute>} />
-            <Route path="/purchases/*"   element={<ProtectedRoute resource="purchases" action="read"><PurchasesPage /></ProtectedRoute>} />
-            <Route path="/suppliers/*"   element={<ProtectedRoute resource="suppliers" action="read"><SuppliersPage /></ProtectedRoute>} />
-            <Route path="/customers/*"   element={<ProtectedRoute resource="customers" action="read"><CustomersPage /></ProtectedRoute>} />
-            <Route path="/sales/*"       element={<ProtectedRoute resource="sales" action="read"><SalesPage /></ProtectedRoute>} />
-            <Route path="/returns/*"     element={<ProtectedRoute resource="returns" action="read"><ReturnsPage /></ProtectedRoute>} />
-            <Route path="/cash-register" element={<ProtectedRoute resource="shifts" action="read"><CashRegisterPage /></ProtectedRoute>} />
-            <Route path="/expenses/*"    element={<ProtectedRoute resource="expenses" action="read"><ExpensesPage /></ProtectedRoute>} />
-            <Route path="/reports/*"     element={<ProtectedRoute resource="reports" action="read"><ReportsPage /></ProtectedRoute>} />
-            <Route path="/users/*"       element={<ProtectedRoute resource="users" action="read"><UsersPage /></ProtectedRoute>} />
-            <Route path="/settings/*"    element={<ProtectedRoute resource="settings" action="read"><SettingsPage /></ProtectedRoute>} />
-            <Route path="/barcodes/*"    element={<ProtectedRoute resource="barcodes" action="read"><BarcodesPage /></ProtectedRoute>} />
-            <Route path="/audit"         element={<ProtectedRoute resource="audit_logs" action="read"><AuditPage /></ProtectedRoute>} />
-            <Route path="*"              element={<Navigate to="/" replace />} />
-          </Routes>
-        </React.Suspense>
+        <Header />
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <React.Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route path="/"                    element={<HomeDispatcher />} />
+              <Route path="/pos"                 element={<ProtectedRoute resource="pos" action="access"><PosPage /></ProtectedRoute>} />
+              <Route path="/products"            element={<ProtectedRoute resource="products" action="read"><ProductsPage /></ProtectedRoute>} />
+              <Route path="/products/categories" element={<ProtectedRoute resource="products" action="update"><CategoriesPage /></ProtectedRoute>} />
+              <Route path="/products/brands"     element={<ProtectedRoute resource="products" action="update"><BrandsPage /></ProtectedRoute>} />
+              <Route path="/products/units"      element={<ProtectedRoute resource="products" action="update"><UnitsPage /></ProtectedRoute>} />
+              <Route path="/products/attributes" element={<ProtectedRoute resource="products" action="update"><AttributesPage /></ProtectedRoute>} />
+              <Route path="/inventory/*"         element={<ProtectedRoute resource="inventory" action="read"><InventoryPage /></ProtectedRoute>} />
+              <Route path="/purchases/*"         element={<ProtectedRoute resource="purchases" action="read"><PurchasesPage /></ProtectedRoute>} />
+              <Route path="/suppliers/*"         element={<ProtectedRoute resource="suppliers" action="read"><SuppliersPage /></ProtectedRoute>} />
+              <Route path="/customers/*"         element={<ProtectedRoute resource="customers" action="read"><CustomersPage /></ProtectedRoute>} />
+              <Route path="/sales/*"             element={<ProtectedRoute resource="sales" action="read"><SalesPage /></ProtectedRoute>} />
+              <Route path="/returns/*"           element={<ProtectedRoute resource="returns" action="read"><ReturnsPage /></ProtectedRoute>} />
+              <Route path="/cash-register"       element={<ProtectedRoute resource="shifts" action="read"><CashRegisterPage /></ProtectedRoute>} />
+              <Route path="/expenses/*"          element={<ProtectedRoute resource="expenses" action="read"><ExpensesPage /></ProtectedRoute>} />
+              <Route path="/reports/*"           element={<ProtectedRoute resource="reports" action="read"><ReportsPage /></ProtectedRoute>} />
+              <Route path="/users/*"             element={<ProtectedRoute resource="users" action="read"><UsersPage /></ProtectedRoute>} />
+              <Route path="/settings/*"          element={<ProtectedRoute resource="settings" action="read"><SettingsPage /></ProtectedRoute>} />
+              <Route path="/barcodes/*"          element={<ProtectedRoute resource="barcodes" action="create"><BarcodesPage /></ProtectedRoute>} />
+              <Route path="/audit"               element={<ProtectedRoute resource="audit_logs" action="read"><AuditPage /></ProtectedRoute>} />
+              <Route path="*"                    element={<Navigate to="/" replace />} />
+            </Routes>
+          </React.Suspense>
+        </div>
       </main>
     </div>
   )
