@@ -1,0 +1,5 @@
+{
+  "schema": "./src/services/db/schema/index.ts",
+  "out": "./drizzle",
+  "dialect": "sqlite"
+}

@@ -1,0 +1,415 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── MAKERS POS Design System ──────────────────────────────────────────── */
+/*
+  MAKERS Official Palette (mapped to HSL, matching the Tailwind hsl(var(--x)) convention below):
+  - Electric Blue  #0078D7 → 207 100% 42%  (already = --primary)
+  - Accent Red     #D92528 → 359 71% 50%   (already = --accent / --destructive)
+  - Dark Background#0D1117 → 216 28% 7%    (already = --background)
+  - Card / Sidebar #161B22 → 215 21% 11%   (updated below — was neutral gray)
+*/
+
+@layer base {
+
+  /* ── Dark Theme (Default) ── */
+  :root {
+    --background: 216 28% 7%;
+    --foreground: 210 20% 95%;
+
+    --card: 215 21% 11%;
+    --card-foreground: 210 20% 95%;
+
+    --popover: 215 21% 11%;
+    --popover-foreground: 210 20% 95%;
+
+    --primary: 207 100% 42%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 215 16% 16%;
+    --secondary-foreground: 210 20% 90%;
+
+    --muted: 215 16% 16%;
+    --muted-foreground: 215 16% 55%;
+
+    --accent: 359 71% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 359 71% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 215 14% 18%;
+    --input: 215 14% 16%;
+    --ring: 207 100% 42%;
+
+    --surface: 215 21% 11%;
+    --surface-elevated: 215 18% 15%;
+
+    --radius: 0.625rem;
+
+    /* Status colors */
+    --success: 142 71% 45%;
+    --warning: 38 92% 50%;
+    --info: 199 89% 48%;
+    --error: 0 72% 51%;
+
+    /* Sidebar */
+    --sidebar-bg: 216 28% 7%;
+    --sidebar-border: 215 14% 16%;
+    --sidebar-item-hover: 215 16% 14%;
+    --sidebar-item-active: 207 100% 42%;
+  }
+
+  /* ── Light Theme ── */
+  .light {
+    --background: 210 20% 98%;
+    --foreground: 220 20% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 10%;
+
+    --primary: 207 100% 42%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 16% 94%;
+    --secondary-foreground: 220 20% 20%;
+
+    --muted: 210 16% 94%;
+    --muted-foreground: 215 16% 45%;
+
+    --accent: 359 71% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 359 71% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 14% 88%;
+    --input: 214 14% 88%;
+    --ring: 207 100% 42%;
+
+    --surface: 0 0% 100%;
+    --surface-elevated: 210 20% 98%;
+
+    --sidebar-bg: 220 20% 14%;
+    --sidebar-border: 220 16% 22%;
+    --sidebar-item-hover: 220 16% 20%;
+    --sidebar-item-active: 207 100% 42%;
+  }
+}
+
+/* ─── Base Element Styles ────────────────────────────────────────────────── */
+@layer base {
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+
+  html {
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    overflow: hidden;
+    /* Desktop app, no scroll on body */
+  }
+
+  /* Arabic RTL font */
+  [dir="rtl"] body,
+  [dir="rtl"] * {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+
+  /* English LTR font */
+  [dir="ltr"] body,
+  [dir="ltr"] * {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-semibold tracking-tight;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground;
+  }
+
+  /* Selection */
+  ::selection {
+    background: hsl(var(--primary) / 0.3);
+    color: hsl(var(--primary-foreground));
+  }
+
+  /* Input number arrows removal */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+/* ─── Utility Classes ────────────────────────────────────────────────────── */
+@layer utilities {
+
+  /* Glassmorphism */
+  .glass {
+    background: hsl(var(--card) / 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid hsl(var(--border) / 0.5);
+  }
+
+  /* Status badge colors */
+  .status-success {
+    @apply bg-green-500/15 text-green-400 border-green-500/30;
+  }
+
+  .status-warning {
+    @apply bg-yellow-500/15 text-yellow-400 border-yellow-500/30;
+  }
+
+  .status-error {
+    @apply bg-red-500/15 text-red-400 border-red-500/30;
+  }
+
+  .status-info {
+    @apply bg-blue-500/15 text-blue-400 border-blue-500/30;
+  }
+
+  .status-muted {
+    @apply bg-muted text-muted-foreground border-border;
+  }
+
+  /* Gradient text */
+  .gradient-text {
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(38 92% 50%));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Sidebar active indicator */
+  .nav-active {
+    @apply bg-primary/15 text-primary border-e-2 border-primary;
+  }
+
+  /* POS specific */
+  .pos-product-card {
+    @apply bg-card border border-border rounded-xl p-3 cursor-pointer transition-all duration-150 hover:border-primary/50 hover:bg-accent/5 active:scale-95;
+  }
+
+  .pos-product-card.out-of-stock {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  /* Quick key highlight */
+  .kbd {
+    @apply inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-muted border border-border font-mono text-muted-foreground;
+  }
+
+  /* Number display for POS */
+  .display-number {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Animate entrance */
+  .animate-enter {
+    @apply animate-fade-in;
+  }
+
+  /* Focus ring */
+  .focus-ring {
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+
+  /* Truncate with tooltip indicator */
+  .truncate-end {
+    @apply truncate;
+  }
+
+  /* Low stock indicator */
+  .low-stock {
+    @apply text-orange-400 bg-orange-500/10 border-orange-500/30;
+  }
+
+  /* RTL-aware margin/padding helpers */
+  .ms-auto {
+    margin-inline-start: auto;
+  }
+
+  .me-auto {
+    margin-inline-end: auto;
+  }
+}
+
+/* ─── Component Overrides ────────────────────────────────────────────────── */
+@layer components {
+
+  /* Sidebar shell */
+  .sidebar {
+    background: hsl(var(--sidebar-bg));
+    border-inline-end: 1px solid hsl(var(--sidebar-border));
+  }
+
+  /* POS grid */
+  .pos-grid {
+    display: grid;
+    grid-template-columns: 1fr 420px;
+    grid-template-rows: 1fr;
+    height: 100%;
+    gap: 0;
+  }
+
+  @media (max-width: 1280px) {
+    .pos-grid {
+      grid-template-columns: 1fr 360px;
+    }
+  }
+
+  /* Data table */
+  .data-table th {
+    @apply text-muted-foreground font-medium text-sm uppercase tracking-wide px-4 py-3 bg-muted/50 border-b border-border;
+  }
+
+  .data-table td {
+    @apply px-4 py-3 border-b border-border/50 text-sm;
+  }
+
+  .data-table tr:hover td {
+    @apply bg-muted/30;
+  }
+
+  /* Stat card */
+  .stat-card {
+    @apply bg-card border border-border rounded-2xl p-5 hover:border-primary/30 transition-colors duration-200;
+  }
+
+  /* Badge pill */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium border;
+  }
+}
+
+/* ─── Print Styles ───────────────────────────────────────────────────────── */
+@page {
+  size: 80mm auto;
+  margin: 0;
+}
+
+@media print {
+  /* Reset document for thermal printer */
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, 'Courier New', Courier, monospace !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide entire application and UI modals */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Make only the designated printable receipt container and its children visible */
+  #printable-receipt,
+  #printable-receipt *,
+  #printable-barcode-labels,
+  #printable-barcode-labels * {
+    visibility: visible !important;
+  }
+
+  /* Position receipt at top-left with zero margins and auto-cutter bottom clearance */
+  #printable-receipt {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    margin: 0 !important;
+    padding: 4mm 3mm 12mm 3mm !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    display: block !important;
+  }
+
+  /* 80mm Standard Thermal Paper */
+  #printable-receipt.receipt-80mm {
+    width: 78mm !important;
+    max-width: 78mm !important;
+  }
+
+  /* 58mm Standard Thermal Paper */
+  #printable-receipt.receipt-58mm {
+    width: 56mm !important;
+    max-width: 56mm !important;
+    padding: 2mm 1.5mm 10mm 1.5mm !important;
+    font-size: 10px !important;
+  }
+
+  /* Printable Barcode Labels / Stickers */
+  #printable-barcode-labels {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 2mm !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: none !important;
+    box-shadow: none !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 3mm !important;
+  }
+
+  .barcode-sticker-card {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Utility classes to hide interactive UI components */
+  .no-print,
+  .no-print * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  .print-only {
+    display: block !important;
+    visibility: visible !important;
+  }
+}
