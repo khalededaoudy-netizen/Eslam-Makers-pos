@@ -69,6 +69,7 @@ export interface ProductListItem {
   selling_price: number
   current_stock: number
   min_stock: number
+  image_path: string | null
   is_active: number
   drawer_location: string | null
   footprint_package: string | null
@@ -216,7 +217,7 @@ class ProductService {
              p.category_id, pc.name_ar as category_name,
              p.unit_id, pu.symbol as unit_symbol, pu.name_ar as unit_name_ar, pu.name_en as unit_name_en,
              p.brand_id, b.name as brand_name,
-             p.purchase_price, p.selling_price, p.current_stock, p.min_stock, p.is_active,
+             p.purchase_price, p.selling_price, p.current_stock, p.min_stock, p.image_path, p.is_active,
              p.drawer_location, p.footprint_package, p.datasheet_url,
              p.source_type, p.external_product_id, p.external_sku, p.external_url, p.website_price,
              (SELECT barcode FROM product_barcodes pb WHERE pb.product_id = p.id AND pb.is_default = 1 LIMIT 1) as primary_barcode,

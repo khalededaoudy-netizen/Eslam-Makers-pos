@@ -103,7 +103,8 @@ export function mapMakersProduct(raw: MakersApiProduct): MakersMappedProduct {
     ? raw.tags.map(t => decodeHtmlEntities(t.name)).filter(Boolean)
     : []
 
-  const imageUrl = raw.images && raw.images.length > 0 ? raw.images[0].src : null
+  const images = Array.isArray(raw.images) ? raw.images.map(img => img.src).filter(Boolean) : []
+  const imageUrl = images.length > 0 ? images[0] : null
   const footprintPackage = extractFootprintPackage(cleanName, plainDesc)
   const datasheetUrl = extractDatasheetUrl(raw.description || '')
 
@@ -117,6 +118,7 @@ export function mapMakersProduct(raw: MakersApiProduct): MakersMappedProduct {
     isInStock: raw.is_in_stock ?? true,
     permalink: raw.permalink || '',
     imageUrl,
+    images,
     categories,
     tags,
     shortDescription: plainShortDesc,
@@ -125,3 +127,4 @@ export function mapMakersProduct(raw: MakersApiProduct): MakersMappedProduct {
     datasheetUrl,
   }
 }
+

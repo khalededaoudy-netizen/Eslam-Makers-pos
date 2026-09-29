@@ -315,3 +315,124 @@ export async function saveImportedProduct(
 
   return { productId, sku: finalSku }
 }
+
+/**
+ * Download product image from MAKERS website and save to %APPDATA%/com.makers.pos/product_images/
+ */
+export async function downloadMakersProductImage(
+  imageUrl: string,
+  skuOrId: string
+): Promise<string | null> {
+  if (!imageUrl) return null
+  try {
+    const isTauri = typeof window !== 'undefined' && ('__TAURI__' in window || '__TAURI_INTERNALS__' in window)
+    if (isTauri) {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const sanitizedSku = (skuOrId || `img_${Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, '_')
+      const filename = `${sanitizedSku}_1.jpg`
+      const path = await invoke<string>('download_makers_image', {
+        imageUrl,
+        saveFilename: filename,
+      })
+      return path
+    }
+  } catch (err) {
+    console.warn('Image download failed, continuing without image:', err)
+  }
+  return null
+}
+
+/**
+ * Import a product directly from MAKERS Catalog with duplicate detection,
+ * automatic category mapping, image downloading, and default commercial values.
+ */
+export async function importMakersProductDirect(
+  db: AppDatabase,
+  product: MakersMappedProduct,
+  options?: {
+    categoryId?: string | null
+    unitId?: string
+    purchasePriceRatio?: number
+    defaultSupplierId?: string | null
+    userId?: string | null
+  }
+): Promise<{
+  status: 'success' | 'duplicate' | 'error'
+  product?: { id: string; sku: string; name: string }
+  existing?: any
+  error?: string
+}> {
+  try {
+    // 1. Check duplicate BEFORE import
+    const dup = await checkDuplicateProduct(db, { id: product.id, sku: product.sku })
+    if (dup.isDuplicate) {
+      return {
+        status: 'duplicate',
+        existing: dup.matchedProduct,
+        product: { id: dup.matchedProduct?.id || '', sku: product.sku, name: product.name },
+      }
+    }
+
+    // 2. Resolve default Unit
+    let unitId = options?.unitId
+    if (!unitId) {
+      const units = await db.select<Array<{ id: string }>>('SELECT id FROM product_units WHERE is_active = 1 LIMIT 1')
+      unitId = units && units.length > 0 ? units[0].id : 'unit_piece'
+    }
+
+    // 3. Resolve Category
+    let categoryId = options?.categoryId || null
+    if (!categoryId && product.categories && product.categories.length > 0) {
+      categoryId = await resolveOrCreateCategory(db, product.categories[0])
+    }
+
+    // 4. Download main image
+    let imagePath: string | null = null
+    const targetImageUrl = product.imageUrl || (product.images && product.images.length > 0 ? product.images[0] : null)
+    if (targetImageUrl) {
+      imagePath = await downloadMakersProductImage(targetImageUrl, product.sku || String(product.id))
+    }
+
+    // 5. Calculate default prices
+    const sellingPrice = product.websitePrice || 0
+    const ratio = options?.purchasePriceRatio ?? 0.7
+    const purchasePrice = Math.round(sellingPrice * ratio * 100) / 100
+
+    // 6. Save product
+    const payload: SaveImportedProductPayload = {
+      external_product_id: String(product.id),
+      external_sku: product.sku || `PRD-${product.id}`,
+      external_url: product.permalink,
+      website_price: product.websitePrice,
+      name_en: product.name,
+      name_ar: product.name,
+      sku: product.sku || `PRD-${product.id}`,
+      description: product.description || product.shortDescription || '',
+      image_path: imagePath,
+      category_id: categoryId,
+      unit_id: unitId,
+      purchase_price: purchasePrice,
+      selling_price: sellingPrice,
+      initial_quantity: 0,
+      min_stock: 0,
+      drawer_location: null,
+      footprint_package: product.footprintPackage,
+      datasheet_url: product.datasheetUrl,
+      default_supplier_id: options?.defaultSupplierId || null,
+      notes: null,
+    }
+
+    const saved = await saveImportedProduct(db, payload, options?.userId)
+    return {
+      status: 'success',
+      product: { id: saved.productId, sku: saved.sku, name: product.name },
+    }
+  } catch (err: any) {
+    return {
+      status: 'error',
+      product: { id: '', sku: product.sku, name: product.name },
+      error: err?.message || 'Unknown error importing product',
+    }
+  }
+}
+

@@ -296,10 +296,10 @@ const arTranslation = {
         skuPlaceholder: "توليد تلقائي في حال تركه فارغاً"
     },
     makersImport: {
-        title: "استيراد من موقع ميكرز",
+        title: "كتالوج موقع ميكرز",
         subtitle: "البحث في كتالوج موقع MAKERS واستيراد البيانات تلقائياً",
         searchPlaceholder: "ابحث بالاسم، كود SKU، باركود، مواصفات (مثل: 10uF 450V، AISHI)...",
-        searchButton: "بحث في ميكرز",
+        searchButton: "بحث أونلاين",
         searching: "جاري البحث في موقع ميكرز...",
         clearSearch: "مسح البحث",
         productsFound: "منتج متوفر",
@@ -307,8 +307,15 @@ const arTranslation = {
         createManually: "إدخال المنتج يدوياً",
         productNotFound: "لم تجد ما تبحث عنه؟",
         select: "اختيار",
+        selectAll: "تحديد الكل",
+        deselectAll: "إلغاء التحديد",
+        importSelected: "استيراد المحدد",
+        importingProgress: "جاري استيراد {{current}} من {{total}}...",
+        statusNew: "جديد",
+        statusExists: "موجود مسبقاً",
+        statusError: "خطأ",
         websitePrice: "سعر الموقع",
-        websitePriceNotice: "سعر الموقع استرشادي فقط ولا يتم تعيينه كسعر بيع تلقائياً",
+        websitePriceNotice: "الأسعار المعروضة مستوردة مباشرة من موقع ميكرز",
         previewTitle: "معاينة المنتج قبل الاستيراد",
         importProduct: "استيراد المنتج",
         importedFromMakers: "مستورد من موقع ميكرز",
@@ -333,7 +340,12 @@ const arTranslation = {
         outOfStock: "نفذ من الموقع",
         viewOnWebsite: "عرض في موقع ميكرز",
         specs: "المواصفات",
-        cancel: "إلغاء"
+        cancel: "إلغاء",
+        importResultsTitle: "تقرير نتائج الاستيراد",
+        successCount: "تم استيرادها بنجاح",
+        duplicateCount: "موجودة مسبقاً (تم تخطيها)",
+        failedCount: "فشل استيرادها",
+        done: "تم"
     },
     categories: {
         nameAr: "اسم التصنيف بالعربية",
@@ -1049,6 +1061,7 @@ const arTranslation = {
     }
 };
 
+
 const enTranslation = {
     app: {
         name: "MAKERS POS",
@@ -1354,6 +1367,13 @@ const enTranslation = {
         createManually: "Create Product Manually",
         productNotFound: "Product not found?",
         select: "Select",
+        selectAll: "Select All",
+        deselectAll: "Deselect",
+        importSelected: "Import Selected",
+        importingProgress: "Importing {{current}} of {{total}}...",
+        statusNew: "New",
+        statusExists: "Already Exists",
+        statusError: "Error",
         websitePrice: "Website Price",
         websitePriceNotice: "Website catalog price is for reference only and won't be copied to selling price",
         previewTitle: "Product Preview",
@@ -1380,7 +1400,12 @@ const enTranslation = {
         outOfStock: "Out of Stock",
         viewOnWebsite: "View on Website",
         specs: "Specifications",
-        cancel: "Cancel"
+        cancel: "Cancel",
+        importResultsTitle: "Import Results Summary",
+        successCount: "Successfully imported",
+        duplicateCount: "Already existed (skipped)",
+        failedCount: "Failed",
+        done: "Done"
     },
     categories: {
         nameAr: "Category Name (Arabic)",
@@ -2095,6 +2120,7 @@ const enTranslation = {
         permissionDenied: "Action rejected: permission denied"
     }
 };
+
 
 const defaultLanguage = localStorage.getItem('makers-pos-settings')
   ? JSON.parse(localStorage.getItem('makers-pos-settings')!)?.state?.language ?? 'ar'

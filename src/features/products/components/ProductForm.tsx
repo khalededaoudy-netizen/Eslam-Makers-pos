@@ -31,7 +31,9 @@ import {
   checkDuplicateProduct,
   addStockToExistingProduct,
   saveImportedProduct,
+  downloadMakersProductImage,
 } from '@/services/makers/makersService'
+import { ProductImage } from '@/components/common/ProductImage'
 import {
   productService,
   CategoryItem,
@@ -261,6 +263,12 @@ export function ProductForm({ initialData, onClose, onSaved }: ProductFormProps)
 
       const importedSku = product.sku || formData.sku || generateSKU(product.name)
 
+      // Try downloading image locally
+      let localImagePath: string | null = null
+      if (product.imageUrl) {
+        localImagePath = await downloadMakersProductImage(product.imageUrl, importedSku)
+      }
+
       setFormData((prev) => ({
         ...prev,
         name_en: product.name,
@@ -270,9 +278,9 @@ export function ProductForm({ initialData, onClose, onSaved }: ProductFormProps)
         category_id: matchedCategoryId || prev.category_id,
         footprint_package: product.footprintPackage || prev.footprint_package,
         datasheet_url: product.datasheetUrl || prev.datasheet_url,
-        image_path: product.imageUrl || prev.image_path,
-        purchase_price: prev.purchase_price || '',
-        selling_price: prev.selling_price || '',
+        image_path: localImagePath || product.imageUrl || prev.image_path,
+        purchase_price: prev.purchase_price || (product.websitePrice ? (product.websitePrice * 0.7).toFixed(2) : ''),
+        selling_price: prev.selling_price || (product.websitePrice ? product.websitePrice.toString() : ''),
         initial_quantity: prev.initial_quantity && prev.initial_quantity !== '0' ? prev.initial_quantity : '',
       }))
 
@@ -570,6 +578,36 @@ export function ProductForm({ initialData, onClose, onSaved }: ProductFormProps)
                   <Layers className="w-3.5 h-3.5" />
                   {t('products.productIdentity', 'بيانات وهوية المنتج')}
                 </p>
+
+                {/* Product Image Preview if available */}
+                {formData.image_path && (
+                  <div className="p-3 rounded-xl bg-card border border-border flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-xl bg-muted/60 border border-border flex items-center justify-center overflow-hidden p-1 shrink-0">
+                      <ProductImage
+                        src={formData.image_path}
+                        alt={formData.name_en || formData.name_ar}
+                        fallbackType="cpu"
+                        iconClassName="w-8 h-8 text-muted-foreground/30"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-xs font-semibold text-foreground block truncate">
+                        {t('products.productImage', 'صورة المنتج المستوردة')}
+                      </span>
+                      <span className="text-[11px] font-mono text-muted-foreground block truncate">
+                        {formData.image_path}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, image_path: '' })}
+                      className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                      title={t('common.delete', 'إزالة الصورة')}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
 
                 {/* Names */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

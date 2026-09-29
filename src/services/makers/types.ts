@@ -76,6 +76,7 @@ export interface MakersMappedProduct {
   isInStock: boolean
   permalink: string
   imageUrl: string | null
+  images?: string[]
   categories: string[]
   tags: string[]
   shortDescription: string
@@ -132,3 +133,11 @@ export interface SaveImportedProductPayload {
   default_supplier_id?: string | null
   notes?: string | null
 }
+
+export interface ImportProductResult {
+  status: 'success' | 'duplicate' | 'error'
+  product?: { id: string; sku: string; name: string }
+  existing?: any
+  error?: string
+}
+

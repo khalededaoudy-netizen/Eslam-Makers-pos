@@ -30,6 +30,8 @@ import { useAuthStore, usePermission } from '@/stores/authStore'
 import { formatCurrency } from '@/lib/formatters'
 import { ProductForm } from './components/ProductForm'
 import { ExcelImportModal } from './components/ExcelImportModal'
+import { MakersImportModal } from './components/MakersImportModal'
+import { ProductImage } from '@/components/common/ProductImage'
 import { excelProductService } from '@/services/products/excelProductService'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import {
@@ -64,6 +66,7 @@ export function ProductsPage() {
   // Modals & Selection
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false)
+  const [isMakersModalOpen, setIsMakersModalOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<any>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
@@ -339,10 +342,7 @@ export function ProductsPage() {
           {canCreate && (
             <button
               type="button"
-              onClick={() => {
-                setEditingProduct(null)
-                setIsFormOpen(true)
-              }}
+              onClick={() => setIsMakersModalOpen(true)}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-muted hover:bg-muted/80 text-foreground border border-border rounded-lg text-xs font-semibold transition-colors shadow-sm"
               title={isAr ? 'البحث والاستيراد المباشر من كتالوج موقع ميكرز' : 'Search and import directly from MAKERS website catalog'}
             >
@@ -526,6 +526,7 @@ export function ProductsPage() {
                     className="rounded border-border text-primary focus:ring-primary cursor-pointer"
                   />
                 </th>
+                <th className="p-3 text-center w-12">{isAr ? 'الصورة' : 'Image'}</th>
                 <th className="p-3 text-start">{isAr ? 'الصنف / الاسم' : 'Product Name'}</th>
                 <th className="p-3 text-start">SKU</th>
                 <th className="p-3 text-start">{isAr ? 'الباركود' : 'Barcode'}</th>
@@ -554,6 +555,16 @@ export function ProductsPage() {
                         onChange={() => handleToggleSelectRow(p.id)}
                         className="rounded border-border text-primary focus:ring-primary cursor-pointer"
                       />
+                    </td>
+                    <td className="p-2 text-center w-12">
+                      <div className="w-10 h-10 rounded-lg bg-muted/60 border border-border flex items-center justify-center overflow-hidden p-0.5 mx-auto">
+                        <ProductImage
+                          src={p.image_path}
+                          alt={p.name_en || p.name_ar}
+                          fallbackType="cpu"
+                          iconClassName="w-5 h-5 text-muted-foreground/30"
+                        />
+                      </div>
                     </td>
                     <td className="p-3 font-semibold text-foreground">
                       <p className="font-bold">{isAr ? p.name_ar : p.name_en || p.name_ar}</p>
@@ -639,6 +650,18 @@ export function ProductsPage() {
         <ExcelImportModal
           isOpen={isExcelModalOpen}
           onClose={() => setIsExcelModalOpen(false)}
+          onImportComplete={() => {
+            loadProducts()
+            loadFilterLookups()
+          }}
+        />
+      )}
+
+      {/* MAKERS Direct Catalog Import Modal */}
+      {isMakersModalOpen && (
+        <MakersImportModal
+          isOpen={isMakersModalOpen}
+          onClose={() => setIsMakersModalOpen(false)}
           onImportComplete={() => {
             loadProducts()
             loadFilterLookups()
