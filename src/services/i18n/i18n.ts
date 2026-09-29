@@ -242,7 +242,19 @@ const arTranslation = {
         printReceipt: "طباعة الإيصال",
         newSale: "بيع جديد",
         noShiftWarning: "لا توجد وردية مفتوحة حالياً. يرجى فتح وردية لبدء تسجيل المبيعات.",
-        openShift: "فتح وردية"
+        openShift: "فتح وردية",
+        customerLookupTitle: "بيانات العميل",
+        customerLookupSubtitle: "البحث برقم الهاتف أو تسجيل عميل جديد قبل إتمام الفاتورة",
+        enterPhonePlaceholder: "أدخل رقم الموبايل (مثال: 01012345678)...",
+        customerFound: "تم العثور على بيانات العميل",
+        useCustomer: "استخدام هذا العميل",
+        newCustomerPrompt: "رقم غير مسجل — تسجيل عميل جديد",
+        saveAndContinue: "حفظ ومتابعة إلى الدفع",
+        saveAndSelect: "حفظ واختيار العميل",
+        lookupHint: "اكتب رقم الموبايل للبحث الفوري أو تسجيل عميل جديد",
+        skipHint: "أو اضغط \"تخطي\" لإجراء بيع نقدي مباشر بدون تسجيل عميل",
+        skipWalkIn: "تخطي (بيع بدون عميل)",
+        clearWalkIn: "تحديد كعميل عابر / نقدي"
     },
     products: {
         title: "المنتجات",
@@ -1276,7 +1288,19 @@ const enTranslation = {
         printReceipt: "Print Receipt",
         newSale: "New Sale",
         noShiftWarning: "No open shift found. Please open a shift before selling.",
-        openShift: "Open Shift"
+        openShift: "Open Shift",
+        customerLookupTitle: "Customer Details",
+        customerLookupSubtitle: "Search by phone or quickly register a new customer before checkout",
+        enterPhonePlaceholder: "Enter mobile phone (e.g. 01012345678)...",
+        customerFound: "Customer record found",
+        useCustomer: "Use this customer",
+        newCustomerPrompt: "Unregistered phone — Add new customer",
+        saveAndContinue: "Save & Proceed to Payment",
+        saveAndSelect: "Save & Select Customer",
+        lookupHint: "Type customer mobile number to auto-search or register instantly",
+        skipHint: "Or click 'Skip' to continue as a direct cash walk-in sale",
+        skipWalkIn: "Skip (Walk-in Sale)",
+        clearWalkIn: "Set as Walk-in Customer"
     },
     products: {
         title: "Products",

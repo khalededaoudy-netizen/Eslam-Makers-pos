@@ -38,6 +38,7 @@ import { productService, CategoryItem } from '@/services/products/productService
 import { BarcodeInput } from './components/BarcodeInput'
 import { Cart } from './components/Cart'
 import { CustomerSelector } from './components/CustomerSelector'
+import { CustomerLookupModal } from './components/CustomerLookupModal'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { CartSummary } from './components/CartSummary'
 import { HeldCartsModal } from './components/HeldCartsModal'
@@ -66,10 +67,12 @@ export function PosPage() {
   const [shiftInfo, setShiftInfo] = useState<PosShiftInfo>({ isOpen: true })
   const [checkingShift, setCheckingShift] = useState(true)
 
-  // Held Carts & Checkout
+  // Held Carts, Customer Lookup & Checkout
   const [heldCarts, setHeldCarts] = useState<HeldCart[]>([])
   const [isHeldModalOpen, setIsHeldModalOpen] = useState(false)
   const [stockNotice, setStockNotice] = useState<string | null>(null)
+  const [customerLookupOpen, setCustomerLookupOpen] = useState(false)
+  const [lookupMode, setLookupMode] = useState<'checkout' | 'select'>('checkout')
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false)
   const [activeReceipt, setActiveReceipt] = useState<ReceiptData | null>(null)
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
@@ -277,6 +280,26 @@ export function PosPage() {
       await refreshShiftAndHeld()
     } catch (err: any) {
       alert(err.message || 'Error deleting held cart')
+    }
+  }
+
+  // Customer Lookup & Checkout Open Handlers
+  const handleOpenCheckout = () => {
+    if (cart.items.length === 0 || !shiftInfo.isOpen) return
+    setLookupMode('checkout')
+    setCustomerLookupOpen(true)
+  }
+
+  const handleOpenCustomerSelect = () => {
+    setLookupMode('select')
+    setCustomerLookupOpen(true)
+  }
+
+  const handleConfirmCustomerLookup = (customer: CustomerSummary | null) => {
+    cart.setCustomer(customer)
+    setCustomerLookupOpen(false)
+    if (lookupMode === 'checkout') {
+      setCheckoutModalOpen(true)
     }
   }
 
@@ -513,10 +536,11 @@ export function PosPage() {
             <CustomerSelector
               selectedCustomer={
                 cart.customerId && cart.customerName
-                  ? { id: cart.customerId, name: cart.customerName }
+                  ? { id: cart.customerId, name: cart.customerName, phone: cart.customer?.phone, customerCode: cart.customer?.customerCode }
                   : null
               }
               onSelectCustomer={(c) => cart.setCustomer(c)}
+              onOpenLookup={handleOpenCustomerSelect}
             />
           </div>
 
@@ -542,7 +566,7 @@ export function PosPage() {
               onSetDiscount={(pct, amt) => cart.setCartDiscount(pct, amt)}
               onHoldCart={handleHoldCart}
               onOpenHeldCarts={() => setIsHeldModalOpen(true)}
-              onPrepareCheckout={() => setCheckoutModalOpen(true)}
+              onPrepareCheckout={handleOpenCheckout}
             />
 
             <div className="flex gap-2">
@@ -561,7 +585,7 @@ export function PosPage() {
               <button
                 type="button"
                 disabled={cart.items.length === 0 || !shiftInfo.isOpen}
-                onClick={() => setCheckoutModalOpen(true)}
+                onClick={handleOpenCheckout}
                 className="flex-[2] h-11 rounded-xl bg-primary text-primary-foreground font-black text-sm hover:bg-primary/90 transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 <ShoppingCart className="w-4 h-4" />
@@ -580,6 +604,26 @@ export function PosPage() {
           onClose={() => setIsHeldModalOpen(false)}
           onResumeCart={handleResumeCart}
           onDeleteCart={handleDeleteHeldCart}
+        />
+      )}
+
+      {/* Customer Lookup Modal */}
+      {customerLookupOpen && (
+        <CustomerLookupModal
+          isOpen={customerLookupOpen}
+          mode={lookupMode}
+          initialCustomer={
+            cart.customerId && cart.customerName
+              ? {
+                  id: cart.customerId,
+                  name: cart.customerName,
+                  phone: cart.customer?.phone,
+                  customerCode: cart.customer?.customerCode,
+                }
+              : null
+          }
+          onClose={() => setCustomerLookupOpen(false)}
+          onConfirmCustomer={handleConfirmCustomerLookup}
         />
       )}
 

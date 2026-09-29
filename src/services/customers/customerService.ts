@@ -214,11 +214,58 @@ class CustomerService {
   async getCustomerByPhone(phone: string): Promise<Customer | null> {
     const db = getDb()
     const p = phone.trim()
+    if (!p) return null
     const rows = await db.select<Customer[]>(
       'SELECT * FROM customers WHERE phone = ? OR phone2 = ? OR whatsapp = ? LIMIT 1',
       [p, p, p]
     )
     return rows && rows.length > 0 ? rows[0] : null
+  }
+
+  /**
+   * Search customers by phone (prefix/partial match)
+   */
+  async searchByPhone(phone: string): Promise<Customer[]> {
+    const trimmed = phone.trim()
+    if (!trimmed) return []
+    const db = getDb()
+    const q = `%${trimmed}%`
+    const rows = await db.select<Customer[]>(
+      `SELECT * FROM customers 
+       WHERE (phone LIKE ? OR phone2 LIKE ? OR whatsapp LIKE ?) 
+       AND is_active = 1 
+       ORDER BY created_at DESC 
+       LIMIT 10`,
+      [q, q, q]
+    )
+    return rows || []
+  }
+
+  /**
+   * Find existing customer by phone or create a new one instantly with audit log
+   */
+  async findOrCreateByPhone(
+    params: { phone: string; name: string; phone2?: string; notes?: string },
+    user?: UserContext
+  ): Promise<Customer> {
+    const trimmedPhone = params.phone.trim()
+    if (trimmedPhone) {
+      const existing = await this.getCustomerByPhone(trimmedPhone)
+      if (existing) {
+        return existing
+      }
+    }
+
+    return await this.createCustomer(
+      {
+        name: params.name.trim(),
+        phone: trimmedPhone || undefined,
+        phone2: params.phone2?.trim() || undefined,
+        notes: params.notes?.trim() || undefined,
+        customer_type: 'individual',
+      },
+      user
+    )
   }
 
   /**

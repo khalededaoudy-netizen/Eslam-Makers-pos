@@ -30,11 +30,13 @@ import { useAuthStore } from '@/stores/authStore'
 interface CustomerSelectorProps {
   selectedCustomer: CustomerSummary | null
   onSelectCustomer: (customer: CustomerSummary | null) => void
+  onOpenLookup?: () => void
 }
 
 export function CustomerSelector({
   selectedCustomer,
   onSelectCustomer,
+  onOpenLookup,
 }: CustomerSelectorProps) {
   const { t, i18n } = useTranslation()
   const isAr = i18n.language !== 'en'
@@ -206,7 +208,13 @@ export function CustomerSelector({
 
           <button
             type="button"
-            onClick={() => setIsOpen(true)}
+            onClick={() => {
+              if (onOpenLookup) {
+                onOpenLookup()
+              } else {
+                setIsOpen(true)
+              }
+            }}
             className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-muted hover:bg-muted/80 text-foreground transition-colors border border-border"
           >
             {selectedCustomer ? t('common.edit', 'تغيير') : t('pos.selectCustomer', 'اختيار عميل')}
