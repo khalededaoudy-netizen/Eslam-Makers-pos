@@ -295,21 +295,21 @@ class CashRegisterService {
 
     const paymentsByMethod: Record<PaymentMethodType, number> = {
       cash: 0,
-      card: 0,
       instapay: 0,
-      vodafone_cash: 0,
-      bank_transfer: 0,
-      other: 0,
+      wallet: 0,
     }
 
     let totalAllPayments = 0
     for (const p of paymentRows) {
       const amt = Number(p.total) || 0
-      const method = (p.method || 'cash').toLowerCase() as PaymentMethodType
+      let method = (p.method || 'cash').toLowerCase() as PaymentMethodType
+      if ((method as any) === 'vodafone_cash' || (method as any) === 'card' || (method as any) === 'bank_transfer' || (method as any) === 'other') {
+        method = 'wallet'
+      }
       if (paymentsByMethod[method] !== undefined) {
         paymentsByMethod[method] += amt
       } else {
-        paymentsByMethod.other += amt
+        paymentsByMethod.wallet += amt
       }
       totalAllPayments += amt
     }

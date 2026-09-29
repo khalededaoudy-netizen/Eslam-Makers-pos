@@ -223,7 +223,7 @@ export function CustomerLookupModal({
         <div className="p-6 overflow-y-auto space-y-5">
           {/* Phone Input Box */}
           <div>
-            <label className="block text-xs font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
+            <label className="text-xs font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
               <Phone className="w-3.5 h-3.5 text-primary" />
               <span>{t('customers.phone', 'رقم الموبايل')}</span>
             </label>

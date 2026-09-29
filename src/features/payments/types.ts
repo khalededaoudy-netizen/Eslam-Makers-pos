@@ -4,11 +4,8 @@
 
 export type PaymentMethodType =
   | 'cash'
-  | 'card'
   | 'instapay'
-  | 'vodafone_cash'
-  | 'bank_transfer'
-  | 'other'
+  | 'wallet'
 
 export interface PaymentMethodConfig {
   id: PaymentMethodType
@@ -28,45 +25,21 @@ export const PAYMENT_METHODS: Record<PaymentMethodType, PaymentMethodConfig> = {
     icon: 'banknote',
     color: 'emerald',
   },
-  card: {
-    id: 'card',
-    nameAr: 'بطاقة بنكية / فيزا',
-    nameEn: 'Credit / Debit Card',
-    isPhysicalCash: false,
-    icon: 'credit-card',
-    color: 'blue',
-  },
   instapay: {
     id: 'instapay',
     nameAr: 'إنستاباي (InstaPay)',
     nameEn: 'InstaPay',
     isPhysicalCash: false,
-    icon: 'zap',
+    icon: 'smartphone',
     color: 'purple',
   },
-  vodafone_cash: {
-    id: 'vodafone_cash',
-    nameAr: 'فودافون كاش / محافظ إلكترونية',
-    nameEn: 'Vodafone Cash / Wallets',
+  wallet: {
+    id: 'wallet',
+    nameAr: 'محفظة إلكترونية',
+    nameEn: 'E-Wallet',
     isPhysicalCash: false,
-    icon: 'smartphone',
+    icon: 'wallet',
     color: 'rose',
-  },
-  bank_transfer: {
-    id: 'bank_transfer',
-    nameAr: 'تحويل بنكي مباشر',
-    nameEn: 'Bank Transfer',
-    isPhysicalCash: false,
-    icon: 'building',
-    color: 'amber',
-  },
-  other: {
-    id: 'other',
-    nameAr: 'طريقة دفع أخرى',
-    nameEn: 'Other Payment Method',
-    isPhysicalCash: false,
-    icon: 'more-horizontal',
-    color: 'slate',
   },
 }
 

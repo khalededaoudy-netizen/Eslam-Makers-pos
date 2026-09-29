@@ -28,13 +28,11 @@ export function PaymentMethodChart({ methods }: PaymentMethodChartProps) {
     switch (method) {
       case 'cash':
         return <DollarSign className="w-4 h-4 text-emerald-500" />
-      case 'card':
-        return <CreditCard className="w-4 h-4 text-blue-500" />
       case 'instapay':
-      case 'vodafone_cash':
         return <Smartphone className="w-4 h-4 text-violet-500" />
-      case 'bank_transfer':
-        return <Landmark className="w-4 h-4 text-amber-500" />
+      case 'wallet':
+      case 'vodafone_cash':
+        return <Smartphone className="w-4 h-4 text-rose-500" />
       default:
         return <HelpCircle className="w-4 h-4 text-muted-foreground" />
     }
@@ -78,15 +76,11 @@ export function PaymentMethodChart({ methods }: PaymentMethodChartProps) {
               <div className="w-full bg-muted/60 h-2 rounded-full overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${
-                    m.method === 'cash'
+                    (m.method as string) === 'cash'
                       ? 'bg-emerald-500'
-                      : m.method === 'card'
-                      ? 'bg-blue-500'
-                      : m.method === 'instapay'
+                      : (m.method as string) === 'instapay'
                       ? 'bg-violet-500'
-                      : m.method === 'vodafone_cash'
-                      ? 'bg-rose-500'
-                      : 'bg-amber-500'
+                      : 'bg-rose-500'
                   }`}
                   style={{ width: `${Math.max(3, m.percentage)}%` }}
                 />

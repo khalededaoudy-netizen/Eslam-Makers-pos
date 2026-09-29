@@ -29,11 +29,8 @@ export interface UserContext {
 
 const VALID_PAYMENT_METHODS: PaymentMethodType[] = [
   'cash',
-  'card',
   'instapay',
-  'vodafone_cash',
-  'bank_transfer',
-  'other',
+  'wallet',
 ]
 
 class ExpenseService {

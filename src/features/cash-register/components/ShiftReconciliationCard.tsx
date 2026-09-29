@@ -2,6 +2,7 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Wallet,
+  Banknote,
   Clock,
   User,
   ArrowDownRight,
@@ -208,18 +209,18 @@ export function ShiftReconciliationCard({
           </span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+        <div className="grid grid-cols-3 gap-2 text-xs">
           <div className="p-2.5 rounded-lg bg-card border border-border space-y-0.5">
             <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-              <CreditCard className="w-3 h-3 text-blue-500" />
-              <span>بطاقة / فيزا</span>
+              <Banknote className="w-3 h-3 text-emerald-500" />
+              <span>نقداً (كاش)</span>
             </span>
-            <div className="font-mono font-bold">{formatCurrency(reconciliation.paymentsByMethod.card || 0)}</div>
+            <div className="font-mono font-bold">{formatCurrency(reconciliation.paymentsByMethod.cash || 0)}</div>
           </div>
 
           <div className="p-2.5 rounded-lg bg-card border border-border space-y-0.5">
             <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-              <Zap className="w-3 h-3 text-purple-500" />
+              <Smartphone className="w-3 h-3 text-purple-500" />
               <span>إنستاباي</span>
             </span>
             <div className="font-mono font-bold">{formatCurrency(reconciliation.paymentsByMethod.instapay || 0)}</div>
@@ -227,23 +228,10 @@ export function ShiftReconciliationCard({
 
           <div className="p-2.5 rounded-lg bg-card border border-border space-y-0.5">
             <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-              <Smartphone className="w-3 h-3 text-rose-500" />
-              <span>فودافون كاش</span>
+              <Wallet className="w-3 h-3 text-rose-500" />
+              <span>محفظة إلكترونية</span>
             </span>
-            <div className="font-mono font-bold">{formatCurrency(reconciliation.paymentsByMethod.vodafone_cash || 0)}</div>
-          </div>
-
-          <div className="p-2.5 rounded-lg bg-card border border-border space-y-0.5">
-            <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-              <Building className="w-3 h-3 text-amber-500" />
-              <span>تحويل بنكي</span>
-            </span>
-            <div className="font-mono font-bold">{formatCurrency(reconciliation.paymentsByMethod.bank_transfer || 0)}</div>
-          </div>
-
-          <div className="p-2.5 rounded-lg bg-card border border-border space-y-0.5">
-            <span className="text-[10px] text-muted-foreground">طرق أخرى</span>
-            <div className="font-mono font-bold">{formatCurrency(reconciliation.paymentsByMethod.other || 0)}</div>
+            <div className="font-mono font-bold">{formatCurrency(reconciliation.paymentsByMethod.wallet || 0)}</div>
           </div>
         </div>
       </div>

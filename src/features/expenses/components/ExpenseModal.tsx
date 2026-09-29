@@ -37,11 +37,8 @@ interface ExpenseModalProps {
 
 const PAYMENT_METHODS: Array<{ id: PaymentMethodType; labelAr: string; labelEn: string; isCash: boolean }> = [
   { id: 'cash', labelAr: 'نقداً (من الخزينة)', labelEn: 'Cash (Drawer)', isCash: true },
-  { id: 'card', labelAr: 'بطاقة بنكية', labelEn: 'Credit/Debit Card', isCash: false },
   { id: 'instapay', labelAr: 'إنستاباي (InstaPay)', labelEn: 'InstaPay', isCash: false },
-  { id: 'vodafone_cash', labelAr: 'فودافون كاش', labelEn: 'Vodafone Cash', isCash: false },
-  { id: 'bank_transfer', labelAr: 'تحويل بنكي', labelEn: 'Bank Transfer', isCash: false },
-  { id: 'other', labelAr: 'أخرى', labelEn: 'Other', isCash: false },
+  { id: 'wallet', labelAr: 'محفظة إلكترونية', labelEn: 'E-Wallet', isCash: false },
 ]
 
 export function ExpenseModal({

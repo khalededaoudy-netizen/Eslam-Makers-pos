@@ -8,7 +8,7 @@ import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   RotateCcw, X, AlertTriangle, CheckCircle2, DollarSign,
-  Package, ShieldCheck, Plus, Trash2, ArrowLeft, CreditCard, Banknote, Smartphone
+  Package, ShieldCheck, Plus, Trash2, ArrowLeft, CreditCard, Banknote, Smartphone, Wallet
 } from 'lucide-react'
 import { returnService } from '../returnService'
 import { SaleReturnEligibility, CreateReturnInput, ReturnCondition, ReturnReceiptData } from '../types'
@@ -141,7 +141,7 @@ export function CreateReturnModal({ saleId, onClose, onSuccess }: CreateReturnMo
   const handleAddSplit = () => {
     setSplitRefunds((prev) => [
       ...prev,
-      { method: 'card', amount: Number(remainingToAllocate.toFixed(2)), reference: '' }
+      { method: 'wallet', amount: Number(remainingToAllocate.toFixed(2)), reference: '' }
     ])
   }
 
@@ -453,10 +453,8 @@ export function CreateReturnModal({ saleId, onClose, onSuccess }: CreateReturnMo
                     <div className="grid grid-cols-3 gap-2">
                       {[
                         { id: 'cash', label: 'نقداً', icon: Banknote },
-                        { id: 'card', label: 'بطاقة', icon: CreditCard },
                         { id: 'instapay', label: 'InstaPay', icon: Smartphone },
-                        { id: 'vodafone_cash', label: 'Vodafone', icon: Smartphone },
-                        { id: 'bank_transfer', label: 'تحويل', icon: CreditCard },
+                        { id: 'wallet', label: 'محفظة إلكترونية', icon: Wallet },
                       ].map((m) => {
                         const Icon = m.icon
                         const isSelected = primaryMethod === m.id
@@ -487,10 +485,8 @@ export function CreateReturnModal({ saleId, onClose, onSuccess }: CreateReturnMo
                             className="py-1.5 px-2 bg-background border border-border rounded-lg text-xs font-medium"
                           >
                             <option value="cash">نقداً (Cash)</option>
-                            <option value="card">بطاقة (Card)</option>
                             <option value="instapay">InstaPay</option>
-                            <option value="vodafone_cash">Vodafone Cash</option>
-                            <option value="bank_transfer">Bank Transfer</option>
+                            <option value="wallet">محفظة إلكترونية (E-Wallet)</option>
                           </select>
                           <input
                             type="number"
