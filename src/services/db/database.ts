@@ -1112,13 +1112,13 @@ async function ensureDefaultPermissions(d: AppDatabase, roles: Array<{ id: strin
     { resource: 'users', actions: ['read', 'create', 'update', 'delete'] },
     { resource: 'settings', actions: ['read', 'update'] },
     { resource: 'audit_logs', actions: ['read'] },
-    { resource: 'barcodes', actions: ['read'] },
+    { resource: 'barcodes', actions: ['read', 'create'] },
   ]
 
   // Manager: Everything except users and settings
   const managerResources = allResources.filter(r => !['users', 'settings'].includes(r.resource))
 
-  // Cashier: POS, sales, receipts, products read, customers read/create, shifts read/create/close/cash_in/cash_out, payments read/create, expenses read/create
+  // Cashier: POS, sales, receipts, products read, customers read/create, shifts read/create/close/cash_in/cash_out, payments read/create, expenses read/create, barcodes read
   const cashierPermissions = [
     { resource: 'pos', action: 'access' },
     { resource: 'pos', action: 'create' },
@@ -1141,6 +1141,7 @@ async function ensureDefaultPermissions(d: AppDatabase, roles: Array<{ id: strin
     { resource: 'returns', action: 'create' },
     { resource: 'expenses', action: 'read' },
     { resource: 'expenses', action: 'create' },
+    { resource: 'barcodes', action: 'read' },
   ]
 
   // Seed Admin Permissions

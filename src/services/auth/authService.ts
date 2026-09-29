@@ -103,6 +103,9 @@ export const SYSTEM_PERMISSIONS: PermissionDefinition[] = [
   { resource: 'shifts', action: 'close', key: 'shifts:close', labelEn: 'Close Cash Shift & Reconcile', labelAr: 'إغلاق وتوريد نقدية الوردية', category: 'finance' },
   { resource: 'shifts', action: 'cash_in', key: 'shifts:cash_in', labelEn: 'Deposit Cash (Cash-In)', labelAr: 'إيداع نقدية بالدرج', category: 'finance' },
   { resource: 'shifts', action: 'cash_out', key: 'shifts:cash_out', labelEn: 'Withdraw Cash (Cash-Out)', labelAr: 'سحب نقدية من الدرج', category: 'finance' },
+  { resource: 'cash_registers', action: 'read', key: 'cash_registers:read', labelEn: 'View Cash Registers', labelAr: 'عرض سجل الخزائن ونقاط البيع', category: 'finance' },
+  { resource: 'payments', action: 'read', key: 'payments:read', labelEn: 'View Payment Transactions', labelAr: 'عرض حركات الدفع والتحصيل', category: 'finance' },
+  { resource: 'payments', action: 'create', key: 'payments:create', labelEn: 'Process Payments', labelAr: 'تسجيل وقبول المدفوعات', category: 'finance' },
   { resource: 'expenses', action: 'read', key: 'expenses:read', labelEn: 'View Expenses History', labelAr: 'عرض سجل المصروفات', category: 'finance' },
   { resource: 'expenses', action: 'create', key: 'expenses:create', labelEn: 'Record Store Expense', labelAr: 'تسجيل منصرفات نقدية', category: 'finance' },
 
