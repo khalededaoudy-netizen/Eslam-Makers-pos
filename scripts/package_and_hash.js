@@ -2,54 +2,80 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 
-const targetDir = path.resolve('MAKERS-POS-v1.0.0')
-if (!fs.existsSync(targetDir)) {
-  fs.mkdirSync(targetDir, { recursive: true })
-}
+const releaseDir = path.resolve('MAKERS_POS_v1.0.0_Windows_Release')
+const rootRel = path.resolve('MAKERS-POS-v1.0.0')
+
+const installerDir = path.join(releaseDir, 'Installer')
+const portableDir = path.join(releaseDir, 'Portable')
+
+fs.mkdirSync(installerDir, { recursive: true })
+fs.mkdirSync(portableDir, { recursive: true })
+fs.mkdirSync(rootRel, { recursive: true })
 
 const nsisSource = path.resolve('src-tauri/target/release/bundle/nsis/MAKERS POS_1.0.0_x64-setup.exe')
 const msiSource = path.resolve('src-tauri/target/release/bundle/msi/MAKERS POS_1.0.0_x64_en-US.msi')
 const exeSource = path.resolve('src-tauri/target/release/MAKERS POS.exe')
 
-const nsisDest = path.join(targetDir, 'MAKERS POS_1.0.0_x64-setup.exe')
-const msiDest = path.join(targetDir, 'MAKERS POS_1.0.0_x64_en-US.msi')
-const exeDest = path.join(targetDir, 'MAKERS POS.exe')
+// Copy binaries
+fs.copyFileSync(nsisSource, path.join(installerDir, 'MAKERS POS_1.0.0_x64-setup.exe'))
+fs.copyFileSync(msiSource, path.join(installerDir, 'MAKERS POS_1.0.0_x64_en-US.msi'))
+fs.copyFileSync(exeSource, path.join(portableDir, 'MAKERS POS.exe'))
 
-fs.copyFileSync(nsisSource, nsisDest)
-fs.copyFileSync(msiSource, msiDest)
-fs.copyFileSync(exeSource, exeDest)
+fs.copyFileSync(nsisSource, path.join(rootRel, 'MAKERS POS_1.0.0_x64-setup.exe'))
+fs.copyFileSync(msiSource, path.join(rootRel, 'MAKERS POS_1.0.0_x64_en-US.msi'))
+fs.copyFileSync(exeSource, path.join(rootRel, 'MAKERS POS.exe'))
 
-console.log('Copied all 3 artifacts to:', targetDir)
-
-function getSha256(filePath) {
-  const fileBuffer = fs.readFileSync(filePath)
-  const hashSum = crypto.createHash('sha256')
-  hashSum.update(fileBuffer)
-  return hashSum.digest('hex')
+function hashFile(p) {
+  return crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex').toUpperCase()
 }
 
-const artifacts = [nsisDest, msiDest, exeDest]
-const results = []
+const nsisHash = hashFile(path.join(installerDir, 'MAKERS POS_1.0.0_x64-setup.exe'))
+const msiHash = hashFile(path.join(installerDir, 'MAKERS POS_1.0.0_x64_en-US.msi'))
+const exeHash = hashFile(path.join(portableDir, 'MAKERS POS.exe'))
 
-for (const art of artifacts) {
-  const stat = fs.statSync(art)
-  const sha = getSha256(art)
-  const res = {
-    file: path.basename(art),
-    path: art,
-    size: stat.size,
-    sizeFormatted: (stat.size / (1024 * 1024)).toFixed(2) + ' MB',
-    sha256: sha,
+const nsisSize = fs.statSync(path.join(installerDir, 'MAKERS POS_1.0.0_x64-setup.exe')).size
+const msiSize = fs.statSync(path.join(installerDir, 'MAKERS POS_1.0.0_x64_en-US.msi')).size
+const exeSize = fs.statSync(path.join(portableDir, 'MAKERS POS.exe')).size
+
+const checksumsTxt = [
+  '================================================================================',
+  'MAKERS POS v1.0.0 — OFFICIAL RELEASE CHECKSUMS (SHA-256)',
+  `Generated: ${new Date().toISOString().split('T')[0]}`,
+  '================================================================================',
+  '',
+  'File:   MAKERS POS_1.0.0_x64_en-US.msi (Windows MSI Production Installer)',
+  `Size:   ${msiSize.toLocaleString()} bytes (${(msiSize / (1024*1024)).toFixed(2)} MB)`,
+  `SHA256: ${msiHash}`,
+  '--------------------------------------------------------------------------------',
+  'File:   MAKERS POS_1.0.0_x64-setup.exe (Windows NSIS Setup Installer)',
+  `Size:   ${nsisSize.toLocaleString()} bytes (${(nsisSize / (1024*1024)).toFixed(2)} MB)`,
+  `SHA256: ${nsisHash}`,
+  '--------------------------------------------------------------------------------',
+  'File:   MAKERS POS.exe (Standalone Direct Executable)',
+  `Size:   ${exeSize.toLocaleString()} bytes (${(exeSize / (1024*1024)).toFixed(2)} MB)`,
+  `SHA256: ${exeHash}`,
+  '================================================================================',
+  ''
+].join('\n')
+
+const sha256Sums = [
+  `${nsisHash.toLowerCase()} *MAKERS POS_1.0.0_x64-setup.exe`,
+  `${msiHash.toLowerCase()} *MAKERS POS_1.0.0_x64_en-US.msi`,
+  `${exeHash.toLowerCase()} *MAKERS POS.exe`,
+  ''
+].join('\n')
+
+fs.writeFileSync(path.join(releaseDir, 'CHECKSUMS.txt'), checksumsTxt)
+fs.writeFileSync(path.join(releaseDir, 'SHA256SUMS.txt'), sha256Sums)
+fs.writeFileSync(path.join(rootRel, 'CHECKSUMS.txt'), checksumsTxt)
+fs.writeFileSync(path.join(rootRel, 'SHA256SUMS.txt'), sha256Sums)
+
+// Copy text docs
+const docs = ['README.txt', 'INSTALLATION.txt', 'RECOVERY.txt', 'CHANGELOG.txt']
+for (const doc of docs) {
+  if (fs.existsSync(path.join(rootRel, doc))) {
+    fs.copyFileSync(path.join(rootRel, doc), path.join(releaseDir, doc))
   }
-  results.push(res)
-  console.log('--------------------------------------------------')
-  console.log('File:', res.file)
-  console.log('Path:', res.path)
-  console.log('Size:', res.size, 'bytes', `(${res.sizeFormatted})`)
-  console.log('SHA256:', res.sha256)
 }
 
-// Write checksum file
-const checksumContent = results.map(r => `${r.sha256}  ${r.file}`).join('\n') + '\n'
-fs.writeFileSync(path.join(targetDir, 'SHA256SUMS.txt'), checksumContent)
-console.log('\nWrote checksums to:', path.join(targetDir, 'SHA256SUMS.txt'))
+console.log('✅ Packaging complete. Checksums and documentation updated in both directories.')

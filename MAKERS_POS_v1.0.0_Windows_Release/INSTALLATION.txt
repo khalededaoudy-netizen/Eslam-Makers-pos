@@ -1,0 +1,79 @@
+================================================================================
+MAKERS POS v1.0.0 — INSTALLATION & DEPLOYMENT GUIDE FOR CASHIER WORKSTATION
+================================================================================
+
+1. INSTALLATION VIA WINDOWS INSTALLER (RECOMMENDED)
+----------------------------------------------------
+You have two professional Windows installer options in this package:
+
+OPTION A: Microsoft Windows Installer (MSI)
+  File: MAKERS POS_1.0.0_x64_en-US.msi
+  1. Copy "MAKERS POS_1.0.0_x64_en-US.msi" to your USB Flash Drive.
+  2. Insert the USB Drive into the cashier computer.
+  3. Double-click the MSI file.
+  4. Follow the setup wizard.
+  5. The installer will automatically:
+     - Install MAKERS POS to Program Files / AppData.
+     - Create a Desktop Shortcut.
+     - Create a Start Menu Shortcut under "MAKERS POS".
+     - Register the app in Windows "Installed Apps" for easy clean uninstall.
+
+OPTION B: NSIS Setup Executable (EXE)
+  File: MAKERS POS_1.0.0_x64-setup.exe
+  1. Double-click "MAKERS POS_1.0.0_x64-setup.exe".
+  2. Select installation directory and confirm.
+  3. Automatically creates Start Menu and Desktop shortcuts.
+
+OPTION C: Portable Standalone Executable (Zero-Install)
+  File: MAKERS POS.exe
+  1. Copy "MAKERS POS.exe" directly to your desktop or C:\MAKERS POS\.
+  2. Double-click to run immediately without installation.
+
+
+2. SYSTEM PREREQUISITES & INDEPENDENCE
+---------------------------------------
+- OS: Windows 10 / Windows 11 (64-bit).
+- Microsoft Edge WebView2 (Pre-installed on modern Windows 10/11).
+- NO Node.js required.
+- NO npm required.
+- NO Rust or Visual Studio required.
+- NO Internet connection required (Fully offline POS operations).
+
+
+3. DATABASE INITIALIZATION & PERSISTENCE
+-----------------------------------------
+- The application automatically connects to SQLite at:
+  C:\Users\<Current-User>\AppData\Roaming\com.makers.pos\makers_pos.db
+- On first launch on a new computer:
+  * Creates the directory structure automatically.
+  * Runs all internal schema migrations.
+  * Seeds essential system configurations (default Admin, roles, 35 MAKERS categories).
+- On all subsequent launches, reboots, and restarts:
+  * Persists 100% of products, customers, transactions, inventory, and settings.
+  * Database is completely isolated from Program Files and will never be deleted upon app upgrade.
+
+
+4. THERMAL RECEIPT PRINTER (Xprinter XP-80C / Rongta / ESC-POS)
+----------------------------------------------------------------
+1. Connect printer via USB and power on.
+2. Install the Windows manufacturer driver (e.g. "XP-80C Driver").
+3. In Windows "Printers & Scanners", verify paper size is set to "80mm".
+4. Open MAKERS POS, go to "Settings" -> "Store Settings" -> "Receipt Printing".
+5. Set paper width to "80mm" or "58mm".
+6. Print test receipt.
+
+
+5. BARCODE SCANNER SETUP
+-------------------------
+1. Plug USB barcode scanner into any USB port.
+2. Scanner must operate in standard "HID Keyboard" mode.
+3. In MAKERS POS, scanning any product barcode automatically adds it to the cart.
+
+
+6. BARCODE LABEL PRINTING
+--------------------------
+1. Navigate to "Barcode Labels" in the sidebar.
+2. Select products and quantity.
+3. Choose label size (e.g., 50x25mm, 40x30mm, 38x25mm).
+4. Click "Print Labels" to print directly on barcode sticker printer.
+================================================================================
