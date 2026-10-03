@@ -128,7 +128,7 @@ export interface AttributeDefItem {
 
 class ProductService {
   /**
-   * Check if an internal SKU is unique
+   * Check if an internal SKU is unique among active products
    */
   async checkSkuUnique(sku: string, excludeId?: string): Promise<boolean> {
     const db = getDb()
@@ -136,8 +136,8 @@ class ProductService {
     if (!trimmed) return true
 
     const query = excludeId
-      ? 'SELECT id FROM products WHERE LOWER(sku) = LOWER(?) AND id != ? LIMIT 1'
-      : 'SELECT id FROM products WHERE LOWER(sku) = LOWER(?) LIMIT 1'
+      ? 'SELECT id FROM products WHERE LOWER(sku) = LOWER(?) AND id != ? AND is_active = 1 LIMIT 1'
+      : 'SELECT id FROM products WHERE LOWER(sku) = LOWER(?) AND is_active = 1 LIMIT 1'
     const params = excludeId ? [trimmed, excludeId] : [trimmed]
 
     const rows = await db.select<Array<{ id: string }>>(query, params)
@@ -145,7 +145,7 @@ class ProductService {
   }
 
   /**
-   * Check if a barcode is unique across all product barcodes
+   * Check if a barcode is unique across active product barcodes
    */
   async checkBarcodeUnique(barcode: string, excludeProductId?: string): Promise<boolean> {
     const db = getDb()
@@ -153,8 +153,12 @@ class ProductService {
     if (!trimmed) return true
 
     const query = excludeProductId
-      ? 'SELECT id FROM product_barcodes WHERE barcode = ? AND product_id != ? LIMIT 1'
-      : 'SELECT id FROM product_barcodes WHERE barcode = ? LIMIT 1'
+      ? `SELECT pb.id FROM product_barcodes pb
+         JOIN products p ON p.id = pb.product_id
+         WHERE pb.barcode = ? AND pb.product_id != ? AND p.is_active = 1 LIMIT 1`
+      : `SELECT pb.id FROM product_barcodes pb
+         JOIN products p ON p.id = pb.product_id
+         WHERE pb.barcode = ? AND p.is_active = 1 LIMIT 1`
     const params = excludeProductId ? [trimmed, excludeProductId] : [trimmed]
 
     const rows = await db.select<Array<{ id: string }>>(query, params)
@@ -323,6 +327,12 @@ class ProductService {
     const purchasePrice = Number(input.purchasePrice) || 0
     const sellingPrice = Number(input.sellingPrice) || 0
     const minStock = Number(input.minStock) || 0
+
+    // Safety: release any inactive product SKU holding finalSku
+    await db.execute(
+      "UPDATE products SET sku = sku || '_del_' || substr(id, 1, 8), external_sku = NULL WHERE is_active = 0 AND sku = ?",
+      [finalSku]
+    )
 
     // 1. Insert product
     await db.execute(`

@@ -92,8 +92,6 @@ export function CustomerDetailsModal({
       setIsConfirmOpen(false)
       await loadCustomer()
       onStatusChanged?.()
-    } catch (err: any) {
-      alert(err.message || 'Error updating status')
     } finally {
       setActionLoading(false)
     }

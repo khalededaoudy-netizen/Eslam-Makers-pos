@@ -6,7 +6,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { AppDatabase } from '@/services/db/database'
 import { fetchMakersProducts, fetchMakersProductById } from './client'
-import { mapMakersProduct } from './mapper'
+import { mapMakersProduct, isValidImageUrl } from './mapper'
 import {
   MakersMappedProduct,
   MakersSearchResult,
@@ -224,96 +224,220 @@ export async function resolveOrCreateCategory(
 }
 
 /**
- * Save an imported product, its barcode, and its initial inventory movement
+ * Save an imported product, its barcode, and its initial inventory movement.
+ * If the product was previously soft-deleted (is_active = 0), this reactivates
+ * and updates the existing record with fresh data, ensuring zero UNIQUE constraint collision.
  */
 export async function saveImportedProduct(
   db: AppDatabase,
   payload: SaveImportedProductPayload,
   userId?: string | null
-): Promise<{ productId: string; sku: string }> {
-  const productId = uuidv4()
-  const initialQty = Number(payload.initial_quantity) || 0
-  const purchasePrice = Number(payload.purchase_price) || 0
-  const sellingPrice = Number(payload.selling_price) || 0
-  const minStock = Number(payload.min_stock) || 0
+): Promise<{ productId: string; sku: string; isReactivated?: boolean }> {
+  try {
+    const initialQty = Number(payload.initial_quantity) || 0
+    const purchasePrice = Number(payload.purchase_price) || 0
+    const sellingPrice = Number(payload.selling_price) || 0
+    const minStock = Number(payload.min_stock) || 0
 
-  // Resolve category
-  let finalCategoryId = payload.category_id || null
-  if (!finalCategoryId && payload.new_category_name) {
-    finalCategoryId = await resolveOrCreateCategory(db, payload.new_category_name)
-  }
-
-  const finalSku = payload.sku.trim() || `PRD-${Date.now().toString().slice(-6)}`
-
-  // 1. Insert product record with external metadata
-  await db.execute(
-    `INSERT INTO products (
-       id, sku, name_ar, name_en, description,
-       category_id, unit_id, default_supplier_id,
-       purchase_price, selling_price, current_stock, min_stock,
-       image_path, is_active, notes,
-       drawer_location, footprint_package, datasheet_url,
-       source_type, external_product_id, external_sku, external_url,
-       website_price, last_synced_at,
-       created_at, updated_at
-     ) VALUES (
-       ?, ?, ?, ?, ?,
-       ?, ?, ?,
-       ?, ?, ?, ?,
-       ?, 1, ?,
-       ?, ?, ?,
-       'MAKERS_WEBSITE', ?, ?, ?,
-       ?, datetime('now'),
-       datetime('now'), datetime('now')
-     )`,
-    [
-      productId,
-      finalSku,
-      payload.name_ar || payload.name_en,
-      payload.name_en,
-      payload.description || '',
-      finalCategoryId,
-      payload.unit_id,
-      payload.default_supplier_id || null,
-      purchasePrice,
-      sellingPrice,
-      initialQty,
-      minStock,
-      payload.image_path || null,
-      payload.notes || null,
-      payload.drawer_location || null,
-      payload.footprint_package || null,
-      payload.datasheet_url || null,
-      payload.external_product_id || null,
-      payload.external_sku || finalSku,
-      payload.external_url || null,
-      payload.website_price || null,
-    ]
-  )
-
-  // 2. Store manufacturer barcode if provided
-  if (payload.sku) {
-    try {
-      await db.execute(
-        `INSERT OR IGNORE INTO product_barcodes (
-           id, product_id, barcode, type, is_default, is_printed, source, created_at, updated_at
-         ) VALUES (?, ?, ?, 'code128', 1, 0, 'manufacturer', datetime('now'), datetime('now'))`,
-        [uuidv4(), productId, payload.sku.trim()]
-      )
-    } catch (barcodeErr) {
-      console.warn('Barcode already exists in barcodes table or non-fatal error:', barcodeErr)
+    // Resolve category
+    let finalCategoryId = payload.category_id || null
+    if (!finalCategoryId && payload.new_category_name) {
+      finalCategoryId = await resolveOrCreateCategory(db, payload.new_category_name)
     }
+
+    const finalSku = payload.sku ? payload.sku.trim() : `PRD-${Date.now().toString().slice(-6)}`
+    const extId = payload.external_product_id ? String(payload.external_product_id).trim() : null
+    const extSku = payload.external_sku ? payload.external_sku.trim() : null
+    const cleanImagePath = (payload.image_path && isValidImageUrl(payload.image_path)) ? payload.image_path.trim() : null
+
+    // Check if there is an existing inactive (soft-deleted) product record to reactivate and update
+    let existingInactiveId: string | null = null
+
+    // Priority 1: Match inactive by external_product_id
+    if (extId) {
+      const rows = await db.select<Array<{ id: string }>>(
+        'SELECT id FROM products WHERE is_active = 0 AND external_product_id = ? LIMIT 1',
+        [extId]
+      )
+      if (rows && rows.length > 0) {
+        existingInactiveId = rows[0].id
+      }
+    }
+
+    // Priority 2: Match inactive by external_sku
+    if (!existingInactiveId && extSku) {
+      const rows = await db.select<Array<{ id: string }>>(
+        'SELECT id FROM products WHERE is_active = 0 AND (external_sku = ? OR sku = ?) LIMIT 1',
+        [extSku, extSku]
+      )
+      if (rows && rows.length > 0) {
+        existingInactiveId = rows[0].id
+      }
+    }
+
+    // Priority 3: Match inactive by SKU
+    if (!existingInactiveId && finalSku) {
+      const rows = await db.select<Array<{ id: string }>>(
+        'SELECT id FROM products WHERE is_active = 0 AND (sku = ? OR external_sku = ?) LIMIT 1',
+        [finalSku, finalSku]
+      )
+      if (rows && rows.length > 0) {
+        existingInactiveId = rows[0].id
+      }
+    }
+
+    const finalProductId = existingInactiveId || uuidv4()
+
+    // Safety: If there is any OTHER inactive product that holds this finalSku, release its SKU to prevent UNIQUE collision
+    await db.execute(
+      "UPDATE products SET sku = sku || '_del_' || substr(id, 1, 8), external_sku = NULL WHERE is_active = 0 AND sku = ? AND id != ?",
+      [finalSku, finalProductId]
+    )
+
+    if (existingInactiveId) {
+      // Reactivate and update existing product record with latest imported Makers data
+      await db.execute(
+        `UPDATE products SET
+           sku = ?,
+           name_ar = ?,
+           name_en = ?,
+           description = ?,
+           category_id = ?,
+           unit_id = ?,
+           default_supplier_id = ?,
+           purchase_price = ?,
+           selling_price = ?,
+           current_stock = ?,
+           min_stock = ?,
+           image_path = ?,
+           is_active = 1,
+           notes = ?,
+           drawer_location = ?,
+           footprint_package = ?,
+           datasheet_url = ?,
+           source_type = 'MAKERS_WEBSITE',
+           external_product_id = ?,
+           external_sku = ?,
+           external_url = ?,
+           website_price = ?,
+           last_synced_at = datetime('now'),
+           updated_at = datetime('now')
+         WHERE id = ?`,
+        [
+          finalSku,
+          payload.name_ar || payload.name_en,
+          payload.name_en,
+          payload.description || '',
+          finalCategoryId,
+          payload.unit_id,
+          payload.default_supplier_id || null,
+          purchasePrice,
+          sellingPrice,
+          initialQty,
+          minStock,
+          cleanImagePath,
+          payload.notes || null,
+          payload.drawer_location || null,
+          payload.footprint_package || null,
+          payload.datasheet_url || null,
+          extId,
+          extSku || finalSku,
+          payload.external_url || null,
+          payload.website_price || null,
+          finalProductId,
+        ]
+      )
+    } else {
+      // Insert brand new product record
+      await db.execute(
+        `INSERT INTO products (
+           id, sku, name_ar, name_en, description,
+           category_id, unit_id, default_supplier_id,
+           purchase_price, selling_price, current_stock, min_stock,
+           image_path, is_active, notes,
+           drawer_location, footprint_package, datasheet_url,
+           source_type, external_product_id, external_sku, external_url,
+           website_price, last_synced_at,
+           created_at, updated_at
+         ) VALUES (
+           ?, ?, ?, ?, ?,
+           ?, ?, ?,
+           ?, ?, ?, ?,
+           ?, 1, ?,
+           ?, ?, ?,
+           'MAKERS_WEBSITE', ?, ?, ?,
+           ?, datetime('now'),
+           datetime('now'), datetime('now')
+         )`,
+        [
+          finalProductId,
+          finalSku,
+          payload.name_ar || payload.name_en,
+          payload.name_en,
+          payload.description || '',
+          finalCategoryId,
+          payload.unit_id,
+          payload.default_supplier_id || null,
+          purchasePrice,
+          sellingPrice,
+          initialQty,
+          minStock,
+          cleanImagePath,
+          payload.notes || null,
+          payload.drawer_location || null,
+          payload.footprint_package || null,
+          payload.datasheet_url || null,
+          extId,
+          extSku || finalSku,
+          payload.external_url || null,
+          payload.website_price || null,
+        ]
+      )
+    }
+
+    // 2. Store / update manufacturer barcode
+    if (payload.sku) {
+      try {
+        await db.execute(
+          'DELETE FROM product_barcodes WHERE barcode = ? AND product_id != ?',
+          [payload.sku.trim(), finalProductId]
+        )
+
+        await db.execute(
+          `INSERT OR REPLACE INTO product_barcodes (
+             id, product_id, barcode, type, is_default, is_printed, source, created_at, updated_at
+           ) VALUES (?, ?, ?, 'code128', 1, 0, 'manufacturer', datetime('now'), datetime('now'))`,
+          [uuidv4(), finalProductId, payload.sku.trim()]
+        )
+      } catch (barcodeErr) {
+        console.warn('Barcode upsert warning:', barcodeErr)
+      }
+    }
+
+    // 3. Create initial inventory movement
+    const movementReason = existingInactiveId
+      ? 'Re-imported from MAKERS website after deletion'
+      : 'Initial creation from MAKERS import'
+
+    await db.execute(
+      `INSERT INTO inventory_movements (
+         id, product_id, type, quantity, stock_before, stock_after, reason, user_id, created_at
+       ) VALUES (?, ?, 'initial', ?, 0, ?, ?, ?, datetime('now'))`,
+      [uuidv4(), finalProductId, initialQty, initialQty, movementReason, userId || null]
+    )
+
+    return { productId: finalProductId, sku: finalSku, isReactivated: !!existingInactiveId }
+  } catch (err: any) {
+    console.error('❌ Error in saveImportedProduct:', {
+      message: err?.message,
+      code: err?.code,
+      stack: err?.stack,
+      payloadSku: payload.sku,
+      payloadExtId: payload.external_product_id,
+      payloadName: payload.name_en || payload.name_ar,
+    })
+    throw err
   }
-
-  // 3. Create initial inventory movement
-  await db.execute(
-    `INSERT INTO inventory_movements (
-       id, product_id, type, quantity, stock_before, stock_after, reason, user_id, created_at
-     ) VALUES (?, ?, 'initial', ?, 0, ?, 'Initial creation from MAKERS import', ?, datetime('now'))`,
-    [uuidv4(), productId, initialQty, initialQty, userId || null]
-  )
-
-  return { productId, sku: finalSku }
 }
 
 /**
@@ -323,7 +447,7 @@ export async function downloadMakersProductImage(
   imageUrl: string,
   skuOrId: string
 ): Promise<string | null> {
-  if (!imageUrl) return null
+  if (!imageUrl || !isValidImageUrl(imageUrl)) return null
   try {
     const isTauri = typeof window !== 'undefined' && ('__TAURI__' in window || '__TAURI_INTERNALS__' in window)
     if (isTauri) {
@@ -334,10 +458,12 @@ export async function downloadMakersProductImage(
         imageUrl,
         saveFilename: filename,
       })
-      return path
+      if (path && isValidImageUrl(path)) {
+        return path
+      }
     }
   } catch (err) {
-    console.warn('Image download failed, continuing without image:', err)
+    console.warn('Image download to local storage failed, will use remote image URL:', err)
   }
   return null
 }
@@ -389,11 +515,22 @@ export async function importMakersProductDirect(
       categoryId = await resolveOrCreateCategory(db, product.categories[0])
     }
 
-    // 4. Download main image
+    // 4. Download main image or preserve primary image URL
     let imagePath: string | null = null
-    const targetImageUrl = product.imageUrl || (product.images && product.images.length > 0 ? product.images[0] : null)
+    const targetImageUrl = (product.imageUrl && isValidImageUrl(product.imageUrl))
+      ? product.imageUrl
+      : (product.images && product.images.length > 0 && isValidImageUrl(product.images[0]))
+        ? product.images[0]
+        : null
+
     if (targetImageUrl) {
-      imagePath = await downloadMakersProductImage(targetImageUrl, product.sku || String(product.id))
+      try {
+        const downloadedLocalPath = await downloadMakersProductImage(targetImageUrl, product.sku || String(product.id))
+        imagePath = (downloadedLocalPath && isValidImageUrl(downloadedLocalPath)) ? downloadedLocalPath : targetImageUrl
+      } catch (imgErr) {
+        console.warn('Image download attempt failed, saving remote URL fallback:', imgErr)
+        imagePath = targetImageUrl
+      }
     }
 
     // 5. Calculate prices (use overrides if provided)
@@ -439,6 +576,15 @@ export async function importMakersProductDirect(
       product: { id: saved.productId, sku: saved.sku, name: product.name },
     }
   } catch (err: any) {
+    console.error('❌ Failed to import MAKERS product:', {
+      error: err?.message,
+      code: err?.code,
+      stack: err?.stack,
+      rawError: err,
+      productId: product.id,
+      sku: product.sku,
+      productName: product.name,
+    })
     return {
       status: 'error',
       product: { id: '', sku: product.sku, name: product.name },
@@ -446,4 +592,120 @@ export async function importMakersProductDirect(
     }
   }
 }
+
+export interface BackfillProgress {
+  current: number
+  total: number
+  updated: number
+  skipped: number
+  failed: number
+  currentProductName: string
+}
+
+/**
+ * Backfill missing images for already imported products without changing prices, stock, or names.
+ */
+export async function backfillMissingProductImages(
+  db: AppDatabase,
+  onProgress?: (progress: BackfillProgress) => void
+): Promise<{ updated: number; skipped: number; failed: number }> {
+  // Find active products where image_path is missing or invalid
+  const productsWithoutImages = await db.select<Array<{
+    id: string
+    sku: string
+    name_ar: string
+    name_en: string
+    external_product_id?: string | null
+    external_sku?: string | null
+    image_path?: string | null
+  }>>(
+    `SELECT id, sku, name_ar, name_en, external_product_id, external_sku, image_path
+     FROM products
+     WHERE is_active = 1
+       AND (image_path IS NULL OR TRIM(image_path) = '' OR image_path = 'null' OR image_path = 'undefined')`
+  )
+
+  const stats = { updated: 0, skipped: 0, failed: 0 }
+  const total = productsWithoutImages.length
+
+  for (let i = 0; i < total; i++) {
+    const prod = productsWithoutImages[i]
+    if (onProgress) {
+      onProgress({
+        current: i + 1,
+        total,
+        updated: stats.updated,
+        skipped: stats.skipped,
+        failed: stats.failed,
+        currentProductName: prod.name_ar || prod.name_en || prod.sku,
+      })
+    }
+
+    try {
+      let rawProduct: any = null
+
+      // Priority 1: Match by WooCommerce/Makers Product ID
+      if (prod.external_product_id && /^\d+$/.test(prod.external_product_id)) {
+        try {
+          rawProduct = await fetchMakersProductById(prod.external_product_id)
+        } catch {
+          // Fallback to SKU search if ID lookup fails
+        }
+      }
+
+      // Priority 2: Match by SKU / external_sku
+      const searchSku = (prod.external_sku || prod.sku || '').trim()
+      if (!rawProduct && searchSku) {
+        try {
+          const searchRes = await fetchMakersProducts(searchSku, 1, 5)
+          if (searchRes.products && searchRes.products.length > 0) {
+            const match = searchRes.products.find(
+              (p) => (p.sku && p.sku.trim().toLowerCase() === searchSku.toLowerCase()) || String(p.id) === prod.external_product_id
+            ) || searchRes.products[0]
+            rawProduct = match
+          }
+        } catch {
+          // Search failed
+        }
+      }
+
+      if (!rawProduct) {
+        stats.skipped++
+        continue
+      }
+
+      const mapped = mapMakersProduct(rawProduct)
+      const targetImageUrl = (mapped.imageUrl && isValidImageUrl(mapped.imageUrl))
+        ? mapped.imageUrl
+        : (mapped.images && mapped.images.length > 0 && isValidImageUrl(mapped.images[0]))
+          ? mapped.images[0]
+          : null
+
+      if (targetImageUrl) {
+        let savedPath = await downloadMakersProductImage(targetImageUrl, prod.sku || prod.id)
+        if (!savedPath || !isValidImageUrl(savedPath)) {
+          savedPath = targetImageUrl
+        }
+
+        // ONLY update image_path (never modify prices, stock, names, or SKUs)
+        await db.execute(
+          `UPDATE products
+           SET image_path = ?,
+               updated_at = datetime('now')
+           WHERE id = ? AND (image_path IS NULL OR TRIM(image_path) = '' OR image_path = 'null' OR image_path = 'undefined')`,
+          [savedPath, prod.id]
+        )
+        stats.updated++
+      } else {
+        stats.skipped++
+      }
+    } catch (err) {
+      console.warn(`Failed to backfill image for product ${prod.id}:`, err)
+      stats.failed++
+    }
+  }
+
+  return stats
+}
+
 

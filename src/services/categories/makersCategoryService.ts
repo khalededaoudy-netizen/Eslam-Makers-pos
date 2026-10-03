@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getDb, AppDatabase } from '@/services/db/database'
+import { withTransaction } from '@/services/db/transaction'
 import { auditService } from '@/services/audit/auditService'
 import {
   MAKERS_MASTER_CATEGORIES,
@@ -136,9 +137,7 @@ export class MakersCategoryService {
     let createdCount = 0
     let alreadyExistedCount = 0
 
-    await db.execute('BEGIN TRANSACTION;')
-
-    try {
+    await withTransaction(async (d) => {
       for (const master of MAKERS_MASTER_CATEGORIES) {
         const normEn = normalizeCategoryName(master.name_en)
         const normAr = normalizeCategoryName(master.name_ar)
@@ -152,7 +151,7 @@ export class MakersCategoryService {
 
         if (matched) {
           // Idempotent update: ensure authoritative name_en, sort_order, icon, color, active
-          await db.execute(`
+          await d.execute(`
             UPDATE product_categories SET
               name_en = ?,
               name_ar = ?,
@@ -176,7 +175,7 @@ export class MakersCategoryService {
         } else {
           // Create new record
           const id = uuidv4()
-          await db.execute(`
+          await d.execute(`
             INSERT INTO product_categories (
               id, name_ar, name_en, parent_id, description, color, icon, is_active, sort_order, created_at, updated_at
             ) VALUES (?, ?, ?, NULL, ?, ?, ?, 1, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
@@ -192,30 +191,25 @@ export class MakersCategoryService {
           createdCount++
         }
       }
+    })
 
-      await db.execute('COMMIT;')
-
-      await auditService.log({
-        userId: user?.id,
-        userFullName: user?.fullName,
-        action: 'import_makers_categories',
-        resource: 'product_categories',
-        details: {
-          total: MAKERS_MASTER_CATEGORIES.length,
-          created: createdCount,
-          alreadyExisted: alreadyExistedCount,
-        },
-      })
-
-      return {
+    await auditService.log({
+      userId: user?.id,
+      userFullName: user?.fullName,
+      action: 'import_makers_categories',
+      resource: 'product_categories',
+      details: {
         total: MAKERS_MASTER_CATEGORIES.length,
         created: createdCount,
         alreadyExisted: alreadyExistedCount,
-        duplicatesPrevented: alreadyExistedCount,
-      }
-    } catch (err) {
-      await db.execute('ROLLBACK;')
-      throw err
+      },
+    })
+
+    return {
+      total: MAKERS_MASTER_CATEGORIES.length,
+      created: createdCount,
+      alreadyExisted: alreadyExistedCount,
+      duplicatesPrevented: alreadyExistedCount,
     }
   }
 }

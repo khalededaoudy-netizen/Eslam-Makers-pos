@@ -58,7 +58,7 @@
 
     /* Sidebar */
     --sidebar-bg: 216 28% 7%;
-    --sidebar-fg: 210 20% 95%;
+    --sidebar-fg: 0 0% 100%;
     --sidebar-border: 215 14% 16%;
     --sidebar-item-hover: 215 16% 14%;
     --sidebar-item-active: 207 100% 42%;
@@ -100,9 +100,9 @@
     --surface-elevated: 210 20% 98%;
 
     --sidebar-bg: 0 0% 100%;
-    --sidebar-fg: 220 20% 10%;
+    --sidebar-fg: 207 100% 42%;
     --sidebar-border: 214 14% 88%;
-    --sidebar-item-hover: 210 16% 94%;
+    --sidebar-item-hover: 207 100% 96%;
     --sidebar-item-active: 207 100% 42%;
   }
 }
@@ -274,6 +274,10 @@
   .me-auto {
     margin-inline-end: auto;
   }
+
+  .receipt-feed-space {
+    display: none;
+  }
 }
 
 /* ─── Component Overrides ────────────────────────────────────────────────── */
@@ -324,65 +328,529 @@
   }
 }
 
-/* ─── Print Styles ───────────────────────────────────────────────────────── */
+/* ============================================
+   THERMAL RECEIPT PRINT & PREVIEW STYLES (80mm)
+   ============================================ */
+
+/* Screen Preview Styles for Modern Receipt */
+#printable-receipt {
+  font-family: 'Cairo', 'Noto Sans Arabic', monospace;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+#printable-receipt .r-logo {
+  display: block;
+  margin: 0 auto 4px;
+  max-width: 140px;
+  height: auto;
+}
+
+#printable-receipt .r-store-en {
+  text-align: center;
+  font-size: 12px;
+  font-weight: bold;
+  direction: ltr;
+  margin: 3px 0 1px;
+}
+
+#printable-receipt .r-store-ar {
+  text-align: center;
+  font-size: 11px;
+  font-weight: bold;
+  direction: rtl;
+  margin: 1px 0 4px;
+  display: block;
+}
+
+#printable-receipt .r-divider-solid {
+  border: none;
+  border-top: 1px solid #000;
+  margin: 4px 0;
+}
+
+#printable-receipt .r-divider-dashed {
+  border: none;
+  border-top: 1px dashed #000;
+  margin: 4px 0;
+}
+
+#printable-receipt .r-info {
+  margin: 3px 0;
+}
+
+#printable-receipt .r-info-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px;
+  padding: 2px 0;
+  direction: rtl;
+}
+
+#printable-receipt .r-info-label {
+  text-align: right;
+  direction: rtl;
+  font-weight: 600;
+  white-space: nowrap;
+  padding-right: 2px;
+}
+
+#printable-receipt .r-info-value {
+  text-align: left;
+  direction: ltr;
+  unicode-bidi: isolate;
+  word-wrap: break-word;
+}
+
+#printable-receipt .r-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  direction: rtl;
+  margin: 4px 0;
+  box-sizing: border-box;
+}
+
+#printable-receipt .r-table th {
+  background: #fff;
+  color: #000;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 5px 2px;
+  text-align: center;
+  vertical-align: middle;
+  line-height: 1.35;
+  border: 1px solid #000;
+  border-bottom: 2px solid #000;
+  writing-mode: horizontal-tb;
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow: hidden;
+  text-overflow: clip;
+  box-sizing: border-box;
+}
+
+#printable-receipt .r-table th.col-name,
+#printable-receipt .r-table th.th-name {
+  text-align: right;
+  padding: 5px 4px;
+}
+
+#printable-receipt .r-table td {
+  padding: 4px 2px;
+  font-size: 10.5px;
+  border: 1px solid #000;
+  text-align: center;
+  vertical-align: middle;
+  line-height: 1.35;
+  word-wrap: break-word;
+  box-sizing: border-box;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+#printable-receipt .r-table td.col-name,
+#printable-receipt .r-table td.td-name {
+  text-align: right;
+  padding: 4px 4px;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+#printable-receipt .r-table .col-index { width: 22px; }
+#printable-receipt .r-table .col-name  { width: auto; text-align: right; }
+#printable-receipt .r-table .col-qty   { width: 30px; }
+#printable-receipt .r-table .col-price { width: 48px; }
+#printable-receipt .r-table .col-total { width: 54px; }
+#printable-receipt .r-table .col-refund { width: 58px; }
+
+#printable-receipt .r-sku {
+  font-size: 9px;
+  opacity: 0.75;
+  direction: ltr;
+  margin-top: 1px;
+}
+
+#printable-receipt .r-totals {
+  border: 1px solid #000;
+  margin: 4px 0;
+  padding: 0;
+}
+
+#printable-receipt .r-totals-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px;
+  padding: 2px 5px;
+  border-bottom: 1px solid #000;
+  direction: rtl;
+}
+
+#printable-receipt .r-totals-row:last-child {
+  border-bottom: none;
+}
+
+#printable-receipt .total-label {
+  text-align: right;
+  font-weight: 600;
+}
+
+#printable-receipt .total-value {
+  text-align: left;
+  direction: ltr;
+  font-family: monospace;
+}
+
+#printable-receipt .r-footer {
+  text-align: center;
+  margin-top: 6px;
+}
+
+#printable-receipt .r-thanks-ar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-weight: bold;
+  font-size: 11px;
+  margin-bottom: 3px;
+}
+
+#printable-receipt .r-thanks-line {
+  color: #000;
+  letter-spacing: -1px;
+}
+
+#printable-receipt .r-footer-en {
+  font-size: 9px;
+  direction: ltr;
+  margin: 1px 0;
+}
+
+#printable-receipt .r-footer-ar {
+  font-size: 9px;
+  margin: 1px 0 4px;
+}
+
+#printable-receipt .r-barcode {
+  font-family: monospace;
+  font-size: 10px;
+  font-weight: bold;
+  direction: ltr;
+  letter-spacing: 1px;
+  margin: 3px 0;
+}
+
+#printable-receipt .r-brand {
+  font-size: 9px;
+  direction: ltr;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+#printable-receipt .r-feed {
+  display: block;
+  width: 100%;
+  font-size: 10px;
+  line-height: 1.35;
+  visibility: visible;
+}
+
+#printable-receipt .r-feed > div {
+  display: block;
+  height: auto;
+  line-height: 1.35;
+  visibility: visible;
+}
+
 @page {
-  size: 80mm auto;
+  size: 80mm 297mm;
   margin: 0;
 }
 
 @media print {
-  /* Reset document for thermal printer */
-  html, body {
+  html, body, #root {
     margin: 0 !important;
     padding: 0 !important;
-    background: #ffffff !important;
-    color: #000000 !important;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, 'Courier New', Courier, monospace !important;
+    background: #fff !important;
+    width: 80mm !important;
+    height: auto !important;
     overflow: visible !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
   }
 
-  /* Hide entire application and UI modals */
+  /* Remove any overflow hidden from ancestors */
   body * {
+    overflow: visible !important;
     visibility: hidden !important;
   }
 
-  /* Make only the designated printable receipt container and its children visible */
   #printable-receipt,
   #printable-receipt *,
   #printable-barcode-labels,
-  #printable-barcode-labels * {
+  #printable-barcode-labels * { visibility: visible !important; }
+
+  #printable-receipt {
+    position: relative !important;
+    margin: 0 auto !important;
+    left: 0 !important;
+    right: auto !important;
+
+    /* Safe roll paper printable width */
+    width: 72mm !important;
+    max-width: 72mm !important;
+    min-width: 72mm !important;
+
+    /* Symmetric safe padding */
+    padding: 3mm 3mm 0 3mm !important;
+
+    box-sizing: border-box !important;
+    font-family: 'Cairo', 'Noto Sans Arabic', monospace !important;
+    font-size: 10px !important;
+    line-height: 1.35 !important;
+    color: #000 !important;
+    background: #fff !important;
+    direction: rtl !important;
+    overflow: visible !important;
+    z-index: 999999 !important;
+  }
+
+  /* HEADER */
+  #printable-receipt .r-logo {
+    display: block !important;
+    margin: 0 auto 2mm !important;
+    max-width: 40mm !important;
+    height: auto !important;
+  }
+  #printable-receipt .r-store-en {
+    text-align: center !important;
+    font-size: 12px !important;
+    font-weight: bold !important;
+    direction: ltr !important;
+    margin: 1mm 0 0.5mm !important;
+  }
+  #printable-receipt .r-store-ar {
+    text-align: center !important;
+    font-size: 11px !important;
+    font-weight: bold !important;
+    direction: rtl !important;
+    margin: 0.5mm 0 2mm !important;
+    display: block !important;
     visibility: visible !important;
   }
 
-  /* Position receipt at top-left with zero margins and auto-cutter bottom clearance */
-  #printable-receipt {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    margin: 0 !important;
-    padding: 4mm 3mm 12mm 3mm !important;
-    background: #ffffff !important;
-    color: #000000 !important;
+  /* DIVIDERS */
+  #printable-receipt .r-divider-solid {
     border: none !important;
-    box-shadow: none !important;
-    border-radius: 0 !important;
-    display: block !important;
+    border-top: 1px solid #000 !important;
+    margin: 1.5mm 0 !important;
+  }
+  #printable-receipt .r-divider-dashed {
+    border: none !important;
+    border-top: 1px dashed #000 !important;
+    margin: 1.5mm 0 !important;
   }
 
-  /* 80mm Standard Thermal Paper */
-  #printable-receipt.receipt-80mm {
-    width: 78mm !important;
-    max-width: 78mm !important;
+  /* INFO ROWS */
+  #printable-receipt .r-info { margin: 1mm 0 !important; }
+  #printable-receipt .r-info-row {
+    display: grid !important;
+    grid-template-columns: auto 1fr !important;
+    gap: 2mm !important;
+    padding: 0.8mm 0.5mm !important;
+    direction: rtl !important;
+    text-align: right !important;
+    visibility: visible !important;
+  }
+  #printable-receipt .r-info-label {
+    text-align: right !important;
+    direction: rtl !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+    padding-right: 1mm !important;
+  }
+  #printable-receipt .r-info-value {
+    text-align: left !important;
+    direction: ltr !important;
+    unicode-bidi: isolate !important;
+    word-wrap: break-word !important;
+    font-feature-settings: "tnum" 1, "lnum" 1 !important;
+    font-variant-numeric: lining-nums tabular-nums !important;
   }
 
-  /* 58mm Standard Thermal Paper */
-  #printable-receipt.receipt-58mm {
-    width: 56mm !important;
-    max-width: 56mm !important;
-    padding: 2mm 1.5mm 10mm 1.5mm !important;
+  /* TABLE */
+  #printable-receipt .r-table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    direction: rtl !important;
+    margin: 1.5mm 0 !important;
+    box-sizing: border-box !important;
+  }
+  #printable-receipt .r-table th {
+    background: #fff !important;
+    color: #000 !important;
     font-size: 10px !important;
+    font-weight: bold !important;
+    padding: 1.4mm 0.5mm !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+    border: 1px solid #000 !important;
+    border-bottom: 2px solid #000 !important;
+    writing-mode: horizontal-tb !important;
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+    overflow: hidden !important;
+    text-overflow: clip !important;
+    line-height: 1.35 !important;
+    visibility: visible !important;
+    box-sizing: border-box !important;
+  }
+  #printable-receipt .r-table th.col-name,
+  #printable-receipt .r-table th.th-name {
+    text-align: right !important;
+    padding: 1.4mm 1mm !important;
+  }
+  #printable-receipt .r-table td {
+    padding: 1.2mm 0.5mm !important;
+    font-size: 10.5px !important;
+    border: 1px solid #000 !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+    line-height: 1.35 !important;
+    visibility: visible !important;
+    box-sizing: border-box !important;
+    font-feature-settings: "tnum" 1, "lnum" 1 !important;
+    font-variant-numeric: lining-nums tabular-nums !important;
+  }
+  #printable-receipt .r-table td.col-name,
+  #printable-receipt .r-table td.td-name {
+    text-align: right !important;
+    padding: 1.2mm 1mm !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+  #printable-receipt .r-table .col-index { width: 22px !important; }
+  #printable-receipt .r-table .col-name  {
+    width: auto !important;
+    text-align: right !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+  }
+  #printable-receipt .r-table .col-qty   { width: 30px !important; }
+  #printable-receipt .r-table .col-price { width: 48px !important; }
+  #printable-receipt .r-table .col-total { width: 54px !important; }
+  #printable-receipt .r-table .col-refund { width: 58px !important; }
+
+  #printable-receipt .r-sku {
+    font-size: 9px !important;
+    opacity: 0.75 !important;
+    direction: ltr !important;
+    margin-top: 0.5mm !important;
+    font-feature-settings: "tnum" 1, "lnum" 1 !important;
+    font-variant-numeric: lining-nums tabular-nums !important;
+  }
+
+  /* TOTALS BOX */
+  #printable-receipt .r-totals {
+    border: 1px solid #000 !important;
+    margin: 1.5mm 0 !important;
+    padding: 0 !important;
+  }
+  #printable-receipt .r-totals-row {
+    display: grid !important;
+    grid-template-columns: 1fr auto !important;
+    gap: 2mm !important;
+    padding: 1.2mm 2mm !important;
+    border-bottom: 1px solid #000 !important;
+    direction: rtl !important;
+    text-align: right !important;
+  }
+  #printable-receipt .r-totals-row:last-child {
+    border-bottom: none !important;
+  }
+  #printable-receipt .total-label {
+    text-align: right !important;
+    direction: rtl !important;
+    font-weight: 600 !important;
+    padding-right: 1mm !important;
+    font-size: 10.5px !important;
+  }
+  #printable-receipt .total-value {
+    text-align: left !important;
+    direction: ltr !important;
+    font-family: monospace !important;
+    font-size: 10.5px !important;
+    font-feature-settings: "tnum" 1, "lnum" 1 !important;
+    font-variant-numeric: lining-nums tabular-nums !important;
+  }
+
+  /* Universal numeric styling for receipt */
+  #printable-receipt .receipt-num {
+    font-feature-settings: "tnum" 1, "lnum" 1 !important;
+    font-variant-numeric: lining-nums tabular-nums !important;
+    direction: ltr !important;
+    unicode-bidi: isolate !important;
+  }
+
+
+  /* FOOTER */
+  #printable-receipt .r-footer {
+    text-align: center !important;
+    margin-top: 3mm !important;
+  }
+  #printable-receipt .r-thanks-ar {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 2mm !important;
+    font-weight: bold !important;
+    font-size: 11px !important;
+    margin-bottom: 1.5mm !important;
+  }
+  #printable-receipt .r-thanks-line {
+    color: #000 !important;
+    letter-spacing: -1px !important;
+  }
+  #printable-receipt .r-footer-en {
+    font-size: 9px !important;
+    direction: ltr !important;
+    margin: 0.5mm 0 !important;
+  }
+  #printable-receipt .r-footer-ar {
+    font-size: 9px !important;
+    margin: 0.5mm 0 2mm !important;
+  }
+  #printable-receipt .r-barcode {
+    font-family: monospace !important;
+    font-size: 10px !important;
+    font-weight: bold !important;
+    direction: ltr !important;
+    letter-spacing: 1px !important;
+    margin: 1.5mm 0 !important;
+  }
+  #printable-receipt .r-brand {
+    font-size: 9px !important;
+    direction: ltr !important;
+    font-weight: 600 !important;
+    letter-spacing: 1px !important;
+  }
+
+  /* FEED SPACE */
+  #printable-receipt .r-feed {
+    display: block !important;
+    width: 100% !important;
+    font-size: 10px !important;
+    line-height: 1.35 !important;
+    visibility: visible !important;
+  }
+
+  #printable-receipt .r-feed > div {
+    display: block !important;
+    height: auto !important;
+    line-height: 1.35 !important;
+    visibility: visible !important;
   }
 
   /* Printable Barcode Labels / Stickers */

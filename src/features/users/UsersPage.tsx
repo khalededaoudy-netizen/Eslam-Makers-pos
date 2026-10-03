@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   UserCog, UserPlus, Search, Shield, Briefcase, ShoppingCart,
-  CheckCircle2, XCircle, KeyRound, Pencil, UserX, UserCheck,
+  CheckCircle2, XCircle, KeyRound, Pencil, UserX, UserCheck, Trash2,
   AlertTriangle, RefreshCw, X, Eye, EyeOff, Loader2,
   ShieldCheck, Check, RotateCcw, Sliders, Lock
 } from 'lucide-react'
@@ -33,6 +33,9 @@ export function UsersPage() {
   const [editUser, setEditUser] = useState<UserListItem | null>(null)
   const [passwordResetUser, setPasswordResetUser] = useState<UserListItem | null>(null)
   const [confirmToggleUser, setConfirmToggleUser] = useState<UserListItem | null>(null)
+  const [deleteConfirmUser, setDeleteConfirmUser] = useState<UserListItem | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
   const [permissionManageUser, setPermissionManageUser] = useState<UserListItem | null>(null)
 
   // Form states - Create User
@@ -442,6 +445,44 @@ export function UsersPage() {
     }
   }
 
+  // Handlers - Delete User
+  const handleDeleteUser = async () => {
+    if (!currentUser || !deleteConfirmUser) return
+    setDeleteError('')
+    setIsDeleting(true)
+    try {
+      const res = await authService.deleteUser(deleteConfirmUser.id, currentUser)
+      if (res.success) {
+        setDeleteConfirmUser(null)
+        const msg = res.mode === 'hard_deleted'
+          ? t('users.deleteSuccess', 'تم حذف المستخدم بنجاح')
+          : res.fallbackNotice
+          ? t('users.deactivateFallback', 'لا يمكن حذف المستخدم لأنه مرتبط بسجلات سابقة. تم تعطيل المستخدم بدلًا من حذفه.')
+          : t('users.deactivateSuccess', 'تم تعطيل المستخدم بنجاح')
+
+        setFeedback({
+          type: 'success',
+          message: msg,
+        })
+        await loadData()
+      } else {
+        const msg =
+          res.error === 'cannot_delete_self'
+            ? t('users.cannotDeleteSelf', 'لا يمكنك حذف حسابك الحالي')
+            : res.error === 'cannot_remove_last_admin'
+            ? t('users.cannotRemoveLastAdmin', 'لا يمكن حذف مسؤول النظام الأخير')
+            : res.error === 'permission_denied'
+            ? t('rbac.permissionDenied', 'ليس لديك الصلاحية لتنفيذ هذا الإجراء')
+            : res.error || t('auth.errors.system_error', 'حدث خطأ في النظام')
+        setDeleteError(msg)
+      }
+    } catch (err: any) {
+      setDeleteError(err.message || t('auth.errors.system_error'))
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   // Helper: Role Icon & Badge
   const getRoleBadge = (roleName: string, roleDisplay: string) => {
     switch (roleName) {
@@ -773,6 +814,31 @@ export function UsersPage() {
                                 }
                               >
                                 {u.isActive ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                              </button>
+                            )}
+
+                            {/* Delete User Button */}
+                            {(isAdmin || can('delete', 'users')) && (
+                              <button
+                                onClick={() => {
+                                  setDeleteError('')
+                                  setDeleteConfirmUser(u)
+                                }}
+                                disabled={isSelf || isLastAdmin}
+                                className={`p-1.5 rounded-md transition-colors ${
+                                  isSelf || isLastAdmin
+                                    ? 'opacity-30 cursor-not-allowed text-muted-foreground'
+                                    : 'hover:bg-destructive/10 text-muted-foreground hover:text-destructive'
+                                }`}
+                                title={
+                                  isSelf
+                                    ? t('users.cannotDeleteSelf', 'لا يمكنك حذف حسابك الحالي')
+                                    : isLastAdmin
+                                    ? t('users.cannotRemoveLastAdmin', 'لا يمكن حذف مسؤول النظام الأخير')
+                                    : t('users.delete', 'حذف')
+                                }
+                              >
+                                <Trash2 className="w-4 h-4" />
                               </button>
                             )}
                           </div>
@@ -1200,6 +1266,60 @@ export function UsersPage() {
                 }`}
               >
                 {t('common.confirm', 'تأكيد')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL 6: Confirm Delete User ─────────────────────────── */}
+      {deleteConfirmUser && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="w-full max-w-sm glass rounded-2xl border border-border shadow-2xl p-6 text-center animate-scale-up">
+            <div className="w-12 h-12 rounded-full mx-auto mb-4 flex items-center justify-center bg-destructive/10 text-destructive border border-destructive/20">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-base font-bold text-foreground mb-2">
+              {t('users.deleteConfirmTitle', 'هل أنت متأكد من حذف المستخدم؟')}
+            </h3>
+
+            <div className="bg-muted/30 p-3 rounded-xl border border-border mb-4 text-start space-y-1">
+              <p className="text-xs font-semibold text-foreground">
+                {isRTL ? deleteConfirmUser.fullNameAr || deleteConfirmUser.fullName : deleteConfirmUser.fullName}
+              </p>
+              <p className="text-xs text-muted-foreground font-mono">
+                @{deleteConfirmUser.username}
+              </p>
+            </div>
+
+            {deleteError && (
+              <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-xs mb-4 flex items-center gap-2 text-start">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+
+            <p className="text-xs text-muted-foreground mb-6 leading-relaxed">
+              {t('users.deleteWarning', 'سيتم تعطيل حساب المستخدم وإنهاء جلساته النشطة فوراً مع الحفاظ على سجل المبيعات والعمليات المالية.')}
+            </p>
+
+            <div className="flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmUser(null)}
+                className="px-4 py-2 rounded-lg border border-border text-foreground text-xs font-medium hover:bg-muted transition-colors"
+              >
+                {t('common.cancel', 'إلغاء')}
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteUser}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-lg bg-destructive hover:bg-destructive/90 text-destructive-foreground text-xs font-bold transition-colors flex items-center gap-2 shadow-sm"
+              >
+                {isDeleting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{t('users.deleteUserAction', 'حذف المستخدم')}</span>
               </button>
             </div>
           </div>

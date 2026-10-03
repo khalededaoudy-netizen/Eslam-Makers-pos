@@ -26,10 +26,69 @@ class MockDB implements AppDatabase {
   }
 }
 
+class DatabaseWrapper implements AppDatabase {
+  private rawDb: any
+
+  constructor(rawDb: any) {
+    this.rawDb = rawDb
+  }
+
+  async execute(query: string, bindValues?: unknown[]): Promise<{ lastInsertId: number; rowsAffected: number }> {
+    let lastErr: any = null
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await this.rawDb.execute(query, bindValues)
+      } catch (err: any) {
+        lastErr = err
+        const errMsg = String(err?.message || err).toLowerCase()
+        if (errMsg.includes('database is locked') || errMsg.includes('busy') || errMsg.includes('code: 5')) {
+          if (attempt < 2) {
+            await new Promise((r) => setTimeout(r, 50 * (attempt + 1)))
+            continue
+          }
+        }
+        throw err
+      }
+    }
+    throw lastErr
+  }
+
+  async select<T>(query: string, bindValues?: unknown[]): Promise<T> {
+    let lastErr: any = null
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await this.rawDb.select(query, bindValues)
+      } catch (err: any) {
+        lastErr = err
+        const errMsg = String(err?.message || err).toLowerCase()
+        if (errMsg.includes('database is locked') || errMsg.includes('busy') || errMsg.includes('code: 5')) {
+          if (attempt < 2) {
+            await new Promise((r) => setTimeout(r, 50 * (attempt + 1)))
+            continue
+          }
+        }
+        throw err
+      }
+    }
+    throw lastErr
+  }
+}
+
 /** Initialize the database connection and run migrations */
 export async function initDatabase(): Promise<void> {
   if (isTauri() || (typeof window !== 'undefined' && '__TAURI__' in window)) {
-    db = await Database.load('sqlite:makers_pos.db')
+    const raw = await Database.load('sqlite:makers_pos.db')
+    db = new DatabaseWrapper(raw)
+    // PRAGMA settings must run first at startup before any queries or migrations
+    try {
+      await db.execute('PRAGMA journal_mode = WAL')
+      await db.execute('PRAGMA busy_timeout = 15000')
+      await db.execute('PRAGMA foreign_keys = ON')
+      await db.execute('PRAGMA synchronous = NORMAL')
+      await db.execute('PRAGMA cache_size = -64000')
+    } catch (err) {
+      console.warn('[initDatabase] PRAGMA initialization warning:', err)
+    }
     await runMigrations()
   } else {
     console.warn('⚠️ Running in browser preview without Tauri. Using in-memory MockDB.');
@@ -41,6 +100,8 @@ export function getDb(): AppDatabase {
   if (!db) throw new Error('Database not initialized. Call initDatabase() first.')
   return db as AppDatabase
 }
+
+export { withTransaction, isTransactionActive } from './transaction'
 
 // ─── Migration System ────────────────────────────────────────────────────────
 
@@ -59,6 +120,9 @@ async function runMigrations() {
 
   // Enable foreign keys
   await d.execute('PRAGMA foreign_keys = ON')
+
+  // Set busy_timeout to 10 seconds (10000ms) to prevent SQLITE_BUSY / database is locked
+  await d.execute('PRAGMA busy_timeout = 10000')
 
   // Apply WAL mode for better performance
   await d.execute('PRAGMA journal_mode = WAL')
@@ -868,6 +932,19 @@ CREATE INDEX IF NOT EXISTS user_permissions_user_idx ON user_permissions(user_id
 `
 
 migrations.push({ version: 12, sql: MIGRATION_012 })
+
+// ─── Migration 013: Invoice Discount Types & Enhancements ─────────────────────
+
+const MIGRATION_013 = `
+ALTER TABLE sales ADD COLUMN discount_type TEXT DEFAULT 'fixed'
+---STATEMENT---
+ALTER TABLE held_carts ADD COLUMN discount_pct REAL NOT NULL DEFAULT 0
+---STATEMENT---
+ALTER TABLE held_carts ADD COLUMN discount_type TEXT DEFAULT 'fixed'
+`
+
+migrations.push({ version: 13, sql: MIGRATION_013 })
+
 
 // ─── Seed Data: Insert after initial migration ───────────────────────────────
 

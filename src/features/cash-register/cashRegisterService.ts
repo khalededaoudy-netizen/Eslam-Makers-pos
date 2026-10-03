@@ -5,6 +5,7 @@
 
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '@/services/db/database'
+import { withTransaction } from '@/services/db/transaction'
 import { auditService } from '@/services/audit/auditService'
 import {
   CashRegister,
@@ -112,9 +113,8 @@ class CashRegisterService {
     const movementId = uuidv4()
 
     // Atomic transaction: create shift + record opening cash movement
-    await db.execute('BEGIN TRANSACTION')
-    try {
-      await db.execute(`
+    await withTransaction(async (d) => {
+      await d.execute(`
         INSERT INTO shifts (
           id, register_id, user_id, status, opening_balance,
           cash_sales, cash_refunds, cash_expenses, cash_withdrawals, cash_deposits,
@@ -128,7 +128,7 @@ class CashRegisterService {
       `, [shiftId, input.registerId, user.id, openingBalance, input.notes || null])
 
       // Record opening cash movement in ledger
-      await db.execute(`
+      await d.execute(`
         INSERT INTO cash_movements (
           id, register_id, shift_id, user_id, amount,
           type, direction, reason, notes, created_at
@@ -137,12 +137,7 @@ class CashRegisterService {
           'opening', 'in', 'رصيد افتتاح الوردية', ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         )
       `, [movementId, input.registerId, shiftId, user.id, openingBalance, input.notes || null])
-
-      await db.execute('COMMIT')
-    } catch (err) {
-      await db.execute('ROLLBACK')
-      throw err
-    }
+    })
 
     // Audit trail
     await auditService.log({
@@ -194,9 +189,8 @@ class CashRegisterService {
     const movementId = uuidv4()
     const registerId = input.registerId || shiftRows[0].register_id
 
-    await db.execute('BEGIN TRANSACTION')
-    try {
-      await db.execute(`
+    await withTransaction(async (d) => {
+      await d.execute(`
         INSERT INTO cash_movements (
           id, register_id, shift_id, user_id, amount,
           type, direction, reason, notes, created_at
@@ -218,22 +212,17 @@ class CashRegisterService {
 
       // Update shift summary counters
       if (input.direction === 'in') {
-        await db.execute(
+        await d.execute(
           'UPDATE shifts SET cash_deposits = cash_deposits + ?, updated_at = strftime("%Y-%m-%dT%H:%M:%SZ", "now") WHERE id = ?',
           [amount, input.shiftId]
         )
       } else {
-        await db.execute(
+        await d.execute(
           'UPDATE shifts SET cash_withdrawals = cash_withdrawals + ?, updated_at = strftime("%Y-%m-%dT%H:%M:%SZ", "now") WHERE id = ?',
           [amount, input.shiftId]
         )
       }
-
-      await db.execute('COMMIT')
-    } catch (err) {
-      await db.execute('ROLLBACK')
-      throw err
-    }
+    })
 
     // Audit trail
     await auditService.log({
@@ -368,10 +357,9 @@ class CashRegisterService {
     const difference = Number((actualCash - expectedCash).toFixed(2))
     const closingMovementId = uuidv4()
 
-    await db.execute('BEGIN TRANSACTION')
-    try {
+    await withTransaction(async (d) => {
       // 1. Update shift record
-      await db.execute(`
+      await d.execute(`
         UPDATE shifts SET
           status = 'closed',
           closing_balance = ?,
@@ -393,7 +381,7 @@ class CashRegisterService {
       ])
 
       // 2. Record closing snapshot in cash movements ledger
-      await db.execute(`
+      await d.execute(`
         INSERT INTO cash_movements (
           id, register_id, shift_id, user_id, amount,
           type, direction, reason, notes, created_at
@@ -409,12 +397,7 @@ class CashRegisterService {
         actualCash,
         input.notes || null,
       ])
-
-      await db.execute('COMMIT')
-    } catch (err) {
-      await db.execute('ROLLBACK')
-      throw err
-    }
+    })
 
     // Audit trail
     await auditService.log({
@@ -515,47 +498,47 @@ class CashRegisterService {
         const expectedCash = recon.expectedPhysicalCash
         const closingMovementId = uuidv4()
 
-        await db.execute('BEGIN TRANSACTION')
         try {
-          await db.execute(`
-            UPDATE shifts
-            SET
-              status = 'closed',
-              expected_cash = ?,
-              actual_cash = ?,
-              difference = 0,
-              cash_sales = ?,
-              notes = CASE 
-                WHEN notes IS NULL OR notes = '' THEN 'إغلاق تلقائي بنهاية يوم العمل (Automatic shift close at business day cutoff)' 
-                ELSE notes || '\n' || 'إغلاق تلقائي بنهاية يوم العمل (Automatic shift close at business day cutoff)' 
-              END,
-              closed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-              updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE id = ? AND status = 'open'
-          `, [
-            expectedCash,
-            expectedCash,
-            recon.totalCashSales,
-            shift.id,
-          ])
+          await withTransaction(async (d) => {
+            await d.execute(`
+              UPDATE shifts
+              SET
+                status = 'closed',
+                expected_balance = ?,
+                closing_balance = ?,
+                difference = 0,
+                cash_sales = ?,
+                notes = CASE 
+                  WHEN notes IS NULL OR notes = '' THEN 'إغلاق تلقائي بنهاية يوم العمل (Automatic shift close at business day cutoff)' 
+                  ELSE notes || '\n' || 'إغلاق تلقائي بنهاية يوم العمل (Automatic shift close at business day cutoff)' 
+                END,
+                closed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+              WHERE id = ? AND status = 'open'
+            `, [
+              expectedCash,
+              expectedCash,
+              recon.totalCashSales,
+              shift.id,
+            ])
 
-          await db.execute(`
-            INSERT INTO cash_movements (
-              id, register_id, shift_id, user_id, amount,
-              type, direction, reason, notes, created_at
-            ) VALUES (
-              ?, ?, ?, ?, ?,
-              'closing', 'out', 'إغلاق تلقائي بنهاية يوم العمل', 'Automatic midnight shift close', strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            )
-          `, [
-            closingMovementId,
-            shift.register_id,
-            shift.id,
-            shift.user_id || systemUser.id,
-            expectedCash,
-          ])
+            await d.execute(`
+              INSERT INTO cash_movements (
+                id, register_id, shift_id, user_id, amount,
+                type, direction, reason, notes, created_at
+              ) VALUES (
+                ?, ?, ?, ?, ?,
+                'closing', 'out', 'إغلاق تلقائي بنهاية يوم العمل', 'Automatic midnight shift close', strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+              )
+            `, [
+              closingMovementId,
+              shift.register_id,
+              shift.id,
+              shift.user_id || systemUser.id,
+              expectedCash,
+            ])
+          })
 
-          await db.execute('COMMIT')
           autoClosedShiftIds.push(shift.id)
 
           await auditService.log({
@@ -572,7 +555,6 @@ class CashRegisterService {
             },
           })
         } catch (err) {
-          await db.execute('ROLLBACK')
           console.error(`Failed to auto-close shift ${shift.id}:`, err)
         }
       }

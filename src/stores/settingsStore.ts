@@ -240,7 +240,10 @@ export const useSettingsStore = create<SettingsState>()(
           document.documentElement.dir = updates.language === 'ar' ? 'rtl' : 'ltr'
         }
         if (updates.theme) {
-          document.documentElement.classList.toggle('light', updates.theme === 'light')
+          const isLight = updates.theme === 'light'
+          document.documentElement.classList.toggle('light', isLight)
+          document.documentElement.classList.toggle('dark', !isLight)
+          document.documentElement.setAttribute('data-theme', updates.theme)
         }
       },
     }),

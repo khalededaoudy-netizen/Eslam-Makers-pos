@@ -1,27 +1,22 @@
 /**
- * MAKERS POS — Redesigned Thermal Receipt Modal Component
- * Renders structured, high-contrast, professional receipt preview for printing & cashier review.
- * Compatible with 80mm & 58mm ESC/POS thermal printers with cutter margin safety.
+ * MAKERS POS — Modern Thermal Receipt Modal Component (80mm)
+ * Redesigned for high-contrast, structured 1-bit thermal printer output & rich UI preview.
  */
 
-import React, { useRef } from 'react'
+import React, { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Printer,
   X,
   CheckCircle2,
-  Store,
-  Phone,
-  MapPin,
-  Calendar,
-  User,
-  Hash,
-  CreditCard,
-  Layers,
+  AlertTriangle,
+  Loader2,
 } from 'lucide-react'
 import { ReceiptData } from '../types'
-import { formatCurrency, formatDate } from '@/lib/formatters'
+import { formatDate } from '@/lib/formatters'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { printReceiptDirect } from '@/services/printer/directPrint'
+import makersLogo from '@/assets/logo.png'
 
 interface ReceiptModalProps {
   receipt: ReceiptData | null
@@ -39,14 +34,47 @@ export function ReceiptModal({
   const { t, i18n } = useTranslation()
   const isArabic = i18n.language !== 'en'
   const settingsStore = useSettingsStore()
-  const paperWidth = settingsStore.receiptPaperWidth || '80mm'
   const currencySymbol = settingsStore.currencySymbol || 'ج.م'
   const receiptRef = useRef<HTMLDivElement>(null)
 
+  const [isPrinting, setIsPrinting] = useState(false)
+  const [printFeedback, setPrintFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
   if (!isOpen || !receipt) return null
 
-  const handlePrint = () => {
-    window.print()
+  const handlePrint = async () => {
+    if (isPrinting) return
+    setIsPrinting(true)
+    setPrintFeedback(null)
+
+    try {
+      const el = document.getElementById('printable-receipt')
+      const targetPrinter = settingsStore.defaultPrinter || 'Default'
+      const res = await printReceiptDirect(el, targetPrinter)
+
+      if (res.success) {
+        setPrintFeedback({
+          type: 'success',
+          message: isArabic ? 'تم إرسال الفاتورة للطابعة بنجاح' : 'Receipt sent to printer',
+        })
+      } else {
+        setPrintFeedback({
+          type: 'error',
+          message: res.message || (isArabic ? 'فشل في الطباعة' : 'Print failed'),
+        })
+      }
+    } catch (err: any) {
+      console.error('[ReceiptModal] Print error:', err)
+      setPrintFeedback({
+        type: 'error',
+        message: err?.message || (isArabic ? 'فشل في إرسال أمر الطباعة' : 'Failed to print'),
+      })
+    } finally {
+      setIsPrinting(false)
+      setTimeout(() => {
+        setPrintFeedback(null)
+      }, 4000)
+    }
   }
 
   const handleDone = () => {
@@ -56,13 +84,11 @@ export function ReceiptModal({
     }
   }
 
-  // Authoritative store header settings
-  const storeName = receipt.storeName || settingsStore.storeName || 'MAKERS POS'
-  const storeSubtitle = receipt.storeSubtitle || settingsStore.storeSubtitle || (isArabic ? 'للإلكترونيات والمكونات' : 'Electronics & Components')
+  // Store metadata
+  const storeNameEn = receipt.storeName || settingsStore.storeName || 'Electronics Components'
+  const storeNameAr = receipt.storeSubtitle || settingsStore.storeSubtitle || 'مايكرز لمكونات إلكترونية'
   const storePhone = receipt.storePhone || settingsStore.storePhone
   const storeAddress = receipt.storeAddress || settingsStore.storeAddress
-  const receiptHeader = receipt.receiptHeader || settingsStore.receiptHeader || (isArabic ? 'فاتورة مبيعات' : 'SALES RECEIPT')
-  const receiptFooter = receipt.receiptFooter || settingsStore.receiptFooter || (isArabic ? 'شكراً لتعاملكم معنا\nيرجى الاحتفاظ بالإيصال لخدمة ما بعد البيع' : 'Thank you for your business!\nPlease keep receipt for after-sales service')
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto animate-fade-in">
@@ -79,11 +105,12 @@ export function ReceiptModal({
             <button
               type="button"
               onClick={handlePrint}
-              className="p-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors flex items-center gap-1.5 text-xs font-semibold shadow-sm"
+              disabled={isPrinting}
+              className="p-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors flex items-center gap-1.5 text-xs font-semibold shadow-sm disabled:opacity-50"
               title={t('common.print', 'طباعة')}
             >
-              <Printer className="w-4 h-4" />
-              <span>{t('common.print', 'طباعة')}</span>
+              {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+              <span>{isPrinting ? (isArabic ? 'جاري الطباعة...' : 'Printing...') : t('common.print', 'طباعة')}</span>
             </button>
             <button
               type="button"
@@ -95,162 +122,259 @@ export function ReceiptModal({
           </div>
         </div>
 
+        {/* Feedback Alert */}
+        {printFeedback && (
+          <div
+            className={`mx-6 mt-3 px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs font-semibold animate-in fade-in ${
+              printFeedback.type === 'success'
+                ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                : 'bg-destructive/15 border border-destructive/30 text-destructive'
+            }`}
+          >
+            {printFeedback.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+            )}
+            <span>{printFeedback.message}</span>
+          </div>
+        )}
+
+
         {/* Scrollable Receipt Preview Container */}
         <div className="p-4 sm:p-6 overflow-y-auto flex-1 bg-muted/20 flex justify-center items-start" ref={receiptRef}>
           {/* Printable Thermal Receipt Container */}
           <div
             id="printable-receipt"
-            className={`receipt-${paperWidth} w-full max-w-[340px] bg-white text-black p-4 sm:p-5 rounded-lg shadow-md font-mono text-xs leading-relaxed print:shadow-none print:max-w-none print:w-full print:p-0 print:rounded-none`}
-            dir={isArabic ? 'rtl' : 'ltr'}
+            className="w-full max-w-[280px] bg-white text-black p-3 sm:p-4 rounded-lg shadow-md font-sans text-xs leading-relaxed print:shadow-none print:max-w-none print:w-full print:p-0 print:rounded-none"
+            style={{ margin: '0 auto', boxSizing: 'border-box', textAlign: 'center', width: '100%', maxWidth: '280px', overflow: 'hidden' }}
+            dir="rtl"
           >
-            {/* Store Header Section */}
-            <div className="text-center pb-3 border-b-2 border-black space-y-1">
-              <h2 className="text-base font-black tracking-wide font-sans uppercase text-black">
-                {storeName}
-              </h2>
-              {storeSubtitle && (
-                <p className="text-[11px] font-bold text-neutral-800 font-sans leading-tight">
-                  {storeSubtitle}
-                </p>
-              )}
-              {storePhone && (
-                <p className="text-[11px] text-neutral-900 font-mono font-medium">
-                  {storePhone}
-                </p>
-              )}
-              {storeAddress && (
-                <p className="text-[10px] text-neutral-800 font-sans">
-                  {storeAddress}
-                </p>
-              )}
-              <div className="mt-2 py-1 px-3 bg-neutral-100 text-black font-black text-[11px] text-center rounded border border-neutral-400 font-sans uppercase tracking-wider">
-                {receiptHeader}
+            {/* HEADER */}
+            <div className="r-header text-center" style={{ textAlign: 'center', marginBottom: '8px', padding: '0 4px' }}>
+              <img
+                src={makersLogo}
+                alt="MAKERS"
+                style={{ display: 'block', margin: '0 auto 6px auto', maxWidth: '35mm', height: 'auto' }}
+              />
+              <div style={{ fontSize: '15px', fontWeight: 'bold', letterSpacing: '0.5px', marginBottom: '2px' }}>
+                {storeNameEn}
               </div>
-            </div>
-
-            {/* Sale Metadata Information */}
-            <div className="py-2.5 border-b border-dashed border-neutral-400 space-y-1 text-[11px]">
-              <div className="flex justify-between items-center">
-                <span className="text-neutral-700 font-medium">{t('sales.invoiceNumber', 'رقم الفاتورة')}:</span>
-                <span className="font-black text-black font-mono text-xs">#{receipt.invoiceNumber}</span>
+              <div style={{ fontSize: '12px', color: '#222', marginBottom: '4px' }}>
+                {storeNameAr}
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-neutral-700 font-medium">{t('common.date', 'التاريخ والوقت')}:</span>
-                <span className="font-mono text-[10px]">{formatDate(receipt.date, true)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-neutral-700 font-medium">{t('sales.cashier', 'الكاشير')}:</span>
-                <span className="font-sans font-bold text-black">{receipt.cashierName}</span>
-              </div>
-              {receipt.customerName && (
-                <div className="flex justify-between items-center pt-0.5 border-t border-dotted border-neutral-300">
-                  <span className="text-neutral-700 font-medium">{t('sales.customer', 'العميل')}:</span>
-                  <span className="font-sans font-black text-black">
-                    {receipt.customerName} {receipt.customerCode ? `(${receipt.customerCode})` : ''}
-                  </span>
+              <div style={{ fontSize: '10.5px', color: '#333', lineHeight: '1.4', marginTop: '3px' }}>
+                <div style={{ wordBreak: 'break-word', marginBottom: '2px' }}>
+                  {storeAddress || 'العاشر من رمضان - الموقف الجديد - مول City A'}
                 </div>
-              )}
+                <div className="receipt-num" dir="ltr" style={{ fontWeight: '500', whiteSpace: 'nowrap', textAlign: 'center' }}>
+                  01002126625 &nbsp;-&nbsp; 01505988928
+                </div>
+              </div>
             </div>
 
-            {/* Line Items Table */}
-            <div className="py-2.5 border-b-2 border-black">
-              <div className="grid grid-cols-12 text-[10px] font-black text-black border-b border-black pb-1 mb-1.5 uppercase">
-                <span className="col-span-6">{t('products.name', 'الصنف')}</span>
-                <span className="col-span-2 text-center">{t('common.quantity', 'الكمية')}</span>
-                <span className="col-span-2 text-end">{t('common.price', 'السعر')}</span>
-                <span className="col-span-2 text-end">{t('common.total', 'الإجمالي')}</span>
-              </div>
+            <div style={{ borderTop: '1px solid #000', margin: '8px 0' }} />
 
-              <div className="space-y-1.5">
-                {receipt.items.map((it, idx) => (
-                  <div key={idx} className="grid grid-cols-12 text-[11px] items-start border-b border-neutral-200 pb-1.5 last:border-0">
-                    <div className="col-span-6 pe-1 font-sans">
-                      <p className="font-bold text-black leading-snug">{it.name}</p>
-                      {it.sku && <p className="text-[9px] text-neutral-600 font-mono">{it.sku}</p>}
-                    </div>
-                    <span className="col-span-2 text-center font-bold font-mono text-black">{it.quantity}</span>
-                    <span className="col-span-2 text-end font-mono text-neutral-800">{it.unitPrice.toFixed(2)}</span>
-                    <span className="col-span-2 text-end font-black font-mono text-black">
-                      {it.subtotal.toFixed(2)}
-                    </span>
-                  </div>
+            {/* INFO TABLE */}
+            <table style={{ width: '100%', margin: '0 auto', borderCollapse: 'collapse', fontSize: '11.5px', direction: 'rtl' }}>
+              <tbody>
+                <tr>
+                  <td style={{ textAlign: 'right', fontWeight: '600', padding: '2px 4px', whiteSpace: 'nowrap' }}>
+                    {t('sales.invoiceNumber', 'رقم الفاتورة')}:
+                  </td>
+                  <td style={{ textAlign: 'left', direction: 'ltr', padding: '2px 4px' }} className="receipt-num">
+                    #{receipt.invoiceNumber}
+                  </td>
+                </tr>
+                <tr>
+                  <td style={{ textAlign: 'right', fontWeight: '600', padding: '2px 4px', whiteSpace: 'nowrap' }}>
+                    {t('common.date', 'التاريخ')}:
+                  </td>
+                  <td style={{ textAlign: 'left', direction: 'ltr', padding: '2px 4px' }} className="receipt-num">
+                    {formatDate(receipt.date, true)}
+                  </td>
+                </tr>
+                <tr>
+                  <td style={{ textAlign: 'right', fontWeight: '600', padding: '2px 4px', whiteSpace: 'nowrap' }}>
+                    {t('sales.cashier', 'الكاشير')}:
+                  </td>
+                  <td style={{ textAlign: 'left', padding: '2px 4px' }}>
+                    {receipt.cashierName}
+                  </td>
+                </tr>
+                {receipt.customerName && (
+                  <tr>
+                    <td style={{ textAlign: 'right', fontWeight: '600', padding: '2px 4px', whiteSpace: 'nowrap' }}>
+                      {t('sales.customer', 'العميل')}:
+                    </td>
+                    <td style={{ textAlign: 'left', padding: '2px 4px', wordBreak: 'break-word' }}>
+                      {receipt.customerName}
+                    </td>
+                  </tr>
+                )}
+                {receipt.customerCode && (
+                  <tr>
+                    <td style={{ textAlign: 'right', fontWeight: '600', padding: '2px 4px', whiteSpace: 'nowrap' }}>
+                      {isArabic ? 'كود العميل:' : 'Customer Code:'}
+                    </td>
+                    <td style={{ textAlign: 'left', direction: 'ltr', padding: '2px 4px' }} className="receipt-num">
+                      {receipt.customerCode}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            <div style={{ borderTop: '1px solid #000', margin: '8px 0' }} />
+
+            {/* ITEMS TABLE */}
+            <table
+              className="r-table"
+              style={{
+                width: '100%',
+                margin: '0 auto',
+                tableLayout: 'fixed',
+                borderCollapse: 'collapse',
+                direction: 'rtl',
+                fontSize: '11px',
+              }}
+            >
+              <colgroup>
+                <col style={{ width: '22px' }} />
+                <col style={{ width: 'auto' }} />
+                <col style={{ width: '30px' }} />
+                <col style={{ width: '48px' }} />
+                <col style={{ width: '54px' }} />
+              </colgroup>
+              <thead>
+                <tr style={{ borderTop: '1px solid #000', borderBottom: '2px solid #000', background: '#fff' }}>
+                  <th className="col-index" style={{ width: '22px', textAlign: 'center', padding: '5px 2px', verticalAlign: 'middle', lineHeight: '1.35', border: '1px solid #000', boxSizing: 'border-box' }}>#</th>
+                  <th className="col-name th-name" style={{ textAlign: 'right', padding: '5px 4px', verticalAlign: 'middle', lineHeight: '1.35', border: '1px solid #000', boxSizing: 'border-box' }}>{t('products.name', 'الصنف')}</th>
+                  <th className="col-qty" style={{ width: '30px', textAlign: 'center', padding: '5px 2px', verticalAlign: 'middle', lineHeight: '1.35', border: '1px solid #000', boxSizing: 'border-box' }}>{t('common.qtyShort', 'كم')}</th>
+                  <th className="col-price" style={{ width: '48px', textAlign: 'center', padding: '5px 2px', verticalAlign: 'middle', lineHeight: '1.35', border: '1px solid #000', boxSizing: 'border-box' }}>{t('common.price', 'سعر')}</th>
+                  <th className="col-total" style={{ width: '54px', textAlign: 'center', padding: '5px 2px', verticalAlign: 'middle', lineHeight: '1.35', border: '1px solid #000', boxSizing: 'border-box' }}>{t('common.total', 'الإجمالي')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {receipt.items.map((item, i) => (
+                  <tr key={i} style={{ borderBottom: '1px solid #000' }}>
+                    <td className="col-index receipt-num" style={{ textAlign: 'center', padding: '4px 2px', verticalAlign: 'middle', lineHeight: '1.35', border: '1px solid #000', boxSizing: 'border-box' }}>
+                      {i + 1}
+                    </td>
+                    <td className="col-name td-name" style={{ textAlign: 'right', padding: '4px 4px', verticalAlign: 'middle', lineHeight: '1.35', border: '1px solid #000', wordBreak: 'break-word', overflowWrap: 'break-word', boxSizing: 'border-box' }}>
+                      <div dir="auto" style={{ fontWeight: '600', textAlign: 'right', wordBreak: 'break-word', overflowWrap: 'break-word', lineHeight: '1.3' }}>{item.name}</div>
+                      {item.sku && <div style={{ fontSize: '9px', color: '#444', marginTop: '1px', textAlign: 'right', direction: 'ltr', lineHeight: '1.2' }} className="receipt-num">{item.sku}</div>}
+                    </td>
+                    <td className="col-qty" style={{ textAlign: 'center', padding: '4px 2px', verticalAlign: 'middle', lineHeight: '1.35', border: '1px solid #000', boxSizing: 'border-box' }}>
+                      <span className="receipt-num" style={{ display: 'block', textAlign: 'center', direction: 'ltr' }}>{item.quantity}</span>
+                    </td>
+                    <td className="col-price" style={{ textAlign: 'center', padding: '4px 2px', verticalAlign: 'middle', lineHeight: '1.35', border: '1px solid #000', boxSizing: 'border-box' }}>
+                      <span className="receipt-num" style={{ display: 'block', textAlign: 'center', direction: 'ltr' }}>{item.unitPrice.toFixed(2)}</span>
+                    </td>
+                    <td className="col-total" style={{ textAlign: 'center', padding: '4px 2px', verticalAlign: 'middle', lineHeight: '1.35', border: '1px solid #000', boxSizing: 'border-box' }}>
+                      <span className="receipt-num" style={{ display: 'block', textAlign: 'center', direction: 'ltr', fontWeight: 'bold' }}>{item.subtotal.toFixed(2)}</span>
+                    </td>
+                  </tr>
                 ))}
+              </tbody>
+            </table>
+
+            <div style={{ borderTop: '1px solid #000', margin: '8px 0' }} />
+
+            {/* SUBTOTAL & DISCOUNT */}
+            <table style={{ width: '100%', margin: '0 auto', borderCollapse: 'collapse', fontSize: '12px', direction: 'rtl' }}>
+              <tbody>
+                <tr>
+                  <td style={{ textAlign: 'right', padding: '3px 4px', fontWeight: '600' }}>
+                    {t('pos.subtotal', 'المجموع الفرعي')}:
+                  </td>
+                  <td style={{ textAlign: 'left', direction: 'ltr', padding: '3px 4px' }} className="receipt-num">
+                    {receipt.subtotal.toFixed(2)} {currencySymbol}
+                  </td>
+                </tr>
+                {receipt.discountAmount > 0 && (
+                  <tr>
+                    <td style={{ textAlign: 'right', padding: '3px 4px', fontWeight: '600' }}>
+                      {t('pos.discount', 'الخصم')}:
+                    </td>
+                    <td style={{ textAlign: 'left', direction: 'ltr', padding: '3px 4px' }} className="receipt-num">
+                      -{receipt.discountAmount.toFixed(2)} {currencySymbol}
+                    </td>
+                  </tr>
+                )}
+                {receipt.taxAmount > 0 && (
+                  <tr>
+                    <td style={{ textAlign: 'right', padding: '3px 4px', fontWeight: '600' }}>
+                      {t('pos.tax', 'ضريبة القيمة المضافة')}:
+                    </td>
+                    <td style={{ textAlign: 'left', direction: 'ltr', padding: '3px 4px' }} className="receipt-num">
+                      +{receipt.taxAmount.toFixed(2)} {currencySymbol}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            <div style={{ borderTop: '1px solid #000', margin: '8px 0' }} />
+
+            {/* FINAL TOTAL (BOLD & LARGER) */}
+            <table style={{ width: '100%', margin: '0 auto', borderCollapse: 'collapse', fontSize: '14px', fontWeight: 'bold', direction: 'rtl' }}>
+              <tbody>
+                <tr>
+                  <td style={{ textAlign: 'right', padding: '4px 4px' }}>
+                    {t('common.total', 'الإجمالي')}:
+                  </td>
+                  <td style={{ textAlign: 'left', direction: 'ltr', padding: '4px 4px' }} className="receipt-num">
+                    {receipt.total.toFixed(2)} {currencySymbol}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* DOUBLE DIVIDER */}
+            <div style={{ borderTop: '3px double #000', margin: '6px 0' }} />
+
+            {/* PAYMENTS */}
+            <table style={{ width: '100%', margin: '0 auto', borderCollapse: 'collapse', fontSize: '11.5px', direction: 'rtl' }}>
+              <tbody>
+                <tr>
+                  <td style={{ textAlign: 'right', padding: '2px 4px', fontWeight: '600' }}>
+                    {t('payments.methods', 'طرق الدفع')}:
+                  </td>
+                  <td style={{ textAlign: 'left', direction: 'ltr', padding: '2px 4px' }} className="receipt-num">
+                    {receipt.paidAmount.toFixed(2)} {currencySymbol}
+                  </td>
+                </tr>
+                {receipt.changeAmount > 0 && (
+                  <tr>
+                    <td style={{ textAlign: 'right', padding: '2px 4px', fontWeight: '600' }}>
+                      {t('payments.change', 'المتبقي (الفكة)')}:
+                    </td>
+                    <td style={{ textAlign: 'left', direction: 'ltr', padding: '2px 4px' }} className="receipt-num">
+                      {receipt.changeAmount.toFixed(2)} {currencySymbol}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            {/* FOOTER */}
+            <div style={{ textAlign: 'center', marginTop: '14px', fontSize: '11px' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '12px', marginBottom: '2px' }}>
+                شكراً لتعاملكم معنا
               </div>
-            </div>
-
-            {/* Financial Totals */}
-            <div className="py-2.5 border-b border-dashed border-neutral-400 space-y-1 text-[11px]">
-              <div className="flex justify-between items-center">
-                <span className="text-neutral-700">{t('pos.subtotal', 'المجموع الفرعي')}:</span>
-                <span className="font-mono font-bold">{receipt.subtotal.toFixed(2)} {currencySymbol}</span>
+              <div style={{ fontSize: '10px', color: '#333', marginBottom: '8px' }}>
+                Thank you for your visit
               </div>
-
-              {receipt.discountAmount > 0 && (
-                <div className="flex justify-between items-center text-black font-bold">
-                  <span>{t('pos.discount', 'الخصم')}:</span>
-                  <span className="font-mono">- {receipt.discountAmount.toFixed(2)} {currencySymbol}</span>
-                </div>
-              )}
-
-              {receipt.taxAmount > 0 && (
-                <div className="flex justify-between items-center text-neutral-800">
-                  <span>{t('pos.tax', 'ضريبة القيمة المضافة')}:</span>
-                  <span className="font-mono">+ {receipt.taxAmount.toFixed(2)} {currencySymbol}</span>
-                </div>
-              )}
-
-              {/* Dominant Final Total */}
-              <div className="flex justify-between items-center text-sm font-black text-black pt-2 border-t-2 border-black mt-1">
-                <span className="text-xs uppercase tracking-wide">{t('common.total', 'الإجمالي النهائي')}:</span>
-                <span className="font-mono text-base font-black">{receipt.total.toFixed(2)} {currencySymbol}</span>
+              <div style={{ fontFamily: 'monospace', fontWeight: 'bold', fontSize: '11px', letterSpacing: '1px', marginBottom: '2px' }} className="receipt-num">
+                *{receipt.invoiceNumber}*
               </div>
-            </div>
-
-            {/* Payment Methods Breakdown */}
-            <div className="py-2.5 border-b-2 border-black space-y-1 text-[11px]">
-              <span className="text-[10px] font-black text-neutral-800 block uppercase tracking-wider">
-                {t('payments.methods', 'طرق الدفع والتحصيل')}
-              </span>
-              {receipt.payments.map((p, pIdx) => (
-                <div key={pIdx} className="flex justify-between items-center">
-                  <span className="font-sans font-medium text-neutral-900">
-                    {isArabic ? p.labelAr : p.labelEn}
-                    {p.reference ? ` (${p.reference})` : ''}
-                  </span>
-                  <span className="font-bold font-mono">{p.amount.toFixed(2)} {currencySymbol}</span>
-                </div>
-              ))}
-
-              <div className="flex justify-between items-center pt-1 border-t border-neutral-200">
-                <span className="text-neutral-700 font-medium">{t('payments.paidAmount', 'إجمالي المدفوع')}:</span>
-                <span className="font-black font-mono text-black">{receipt.paidAmount.toFixed(2)} {currencySymbol}</span>
-              </div>
-
-              {receipt.changeAmount > 0 && (
-                <div className="flex justify-between items-center font-bold text-black">
-                  <span>{t('payments.change', 'المتبقي (الفكة)')}:</span>
-                  <span className="font-mono font-bold">{receipt.changeAmount.toFixed(2)} {currencySymbol}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Footer Notice & Thank You */}
-            <div className="text-center pt-3 space-y-2">
-              {receiptFooter && (
-                <p className="text-[10px] text-neutral-800 font-sans font-medium leading-relaxed whitespace-pre-line">
-                  {receiptFooter}
-                </p>
-              )}
-              <div className="pt-2 border-t border-dotted border-neutral-400">
-                <p className="text-[10px] font-mono font-bold tracking-widest text-black uppercase">
-                  *{receipt.invoiceNumber}*
-                </p>
-                <p className="text-[8px] text-neutral-500 font-sans mt-0.5">
-                  MAKERS POS — High Performance Point of Sale
-                </p>
+              <div style={{ fontSize: '10px', fontWeight: 'bold', letterSpacing: '1px' }} className="receipt-num">
+                MAKERS POS
               </div>
             </div>
           </div>
+
         </div>
 
         {/* Bottom Actions (Hidden on Print) */}
@@ -267,10 +391,11 @@ export function ReceiptModal({
             <button
               type="button"
               onClick={handlePrint}
-              className="px-4 py-2 rounded-xl bg-muted hover:bg-muted/80 text-foreground border border-border text-xs font-semibold flex items-center gap-1.5 transition-colors"
+              disabled={isPrinting}
+              className="px-4 py-2 rounded-xl bg-muted hover:bg-muted/80 text-foreground border border-border text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
             >
-              <Printer className="w-4 h-4" />
-              <span>{t('common.print', 'طباعة')}</span>
+              {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+              <span>{isPrinting ? (isArabic ? 'جاري الطباعة...' : 'Printing...') : t('common.print', 'طباعة')}</span>
             </button>
 
             <button

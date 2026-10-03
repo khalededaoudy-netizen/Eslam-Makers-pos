@@ -24,6 +24,8 @@ import {
   DollarSign,
   TrendingUp,
   Percent,
+  CheckCircle2,
+  X,
 } from 'lucide-react'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useAuthStore, usePermission } from '@/stores/authStore'
@@ -82,6 +84,15 @@ export function ProductsPage() {
   // Unified Delete Confirmation Dialog States
   const [deleteProductTarget, setDeleteProductTarget] = useState<ProductListItem | null>(null)
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false)
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'warning'; message: string } | null>(null)
+
+  // Auto-dismiss feedback banner after 4s
+  useEffect(() => {
+    if (feedback) {
+      const timer = setTimeout(() => setFeedback(null), 4000)
+      return () => clearTimeout(timer)
+    }
+  }, [feedback])
 
   useEffect(() => {
     loadFilterLookups()
@@ -170,7 +181,7 @@ export function ProductsPage() {
       : products
 
     if (targetProducts.length === 0) {
-      alert(isAr ? 'لا توجد منتجات لتصديرها' : 'No products to export')
+      setFeedback({ type: 'warning', message: isAr ? 'لا توجد منتجات لتصديرها' : 'No products to export' })
       return
     }
 
@@ -179,20 +190,26 @@ export function ProductsPage() {
         targetProducts,
         exportOnlySelected ? 'MAKERS_Selected_Products.xlsx' : 'MAKERS_Products_Catalog.xlsx'
       )
+      setFeedback({ type: 'success', message: isAr ? 'تم تصدير ملف الإكسيل بنجاح' : 'Products exported successfully' })
     } catch (err: any) {
-      alert(err.message || 'Export failed')
+      setFeedback({ type: 'error', message: err?.message || (isAr ? 'فشل تصدير ملف الإكسيل' : 'Export failed') })
     }
   }
 
   // Bulk Delete Execution
   const executeBulkDelete = async () => {
     if (selectedIds.size === 0) return
-    for (const id of selectedIds) {
-      await productService.deleteProduct(id, { id: user?.id || 'admin', fullName: user?.fullName || 'Admin' })
+    try {
+      for (const id of selectedIds) {
+        await productService.deleteProduct(id, { id: user?.id || 'admin', fullName: user?.fullName || 'Admin' })
+      }
+      setSelectedIds(new Set())
+      setIsBulkDeleteOpen(false)
+      await loadProducts()
+      setFeedback({ type: 'success', message: isAr ? 'تم حذف المنتجات المحددة بنجاح' : 'Selected products deleted successfully' })
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err?.message || (isAr ? 'حدث خطأ أثناء حذف المنتجات' : 'Failed to delete products') })
     }
-    setSelectedIds(new Set())
-    setIsBulkDeleteOpen(false)
-    await loadProducts()
   }
 
   // Bulk Category Update Handler
@@ -225,8 +242,9 @@ export function ProductsPage() {
       setBulkCategoryModalOpen(false)
       setSelectedIds(new Set())
       await loadProducts()
+      setFeedback({ type: 'success', message: isAr ? 'تم تحديث تصنيف المنتجات المحددة بنجاح' : 'Categories updated successfully' })
     } catch (err: any) {
-      alert(err.message || 'Bulk category update failed')
+      setFeedback({ type: 'error', message: err?.message || (isAr ? 'فشل تحديث تصنيف المنتجات' : 'Bulk category update failed') })
     }
   }
 
@@ -235,7 +253,7 @@ export function ProductsPage() {
     if (selectedIds.size === 0 || !priceAdjustValue) return
     const numVal = parseFloat(priceAdjustValue)
     if (isNaN(numVal)) {
-      alert(isAr ? 'يرجى إدخال قيمة رقمية صحيحة' : 'Please enter a valid numeric value')
+      setFeedback({ type: 'warning', message: isAr ? 'يرجى إدخال قيمة رقمية صحيحة' : 'Please enter a valid numeric value' })
       return
     }
 
@@ -289,8 +307,9 @@ export function ProductsPage() {
       setPriceAdjustValue('')
       setSelectedIds(new Set())
       await loadProducts()
+      setFeedback({ type: 'success', message: isAr ? 'تم تحديث أسعار المنتجات المحددة بنجاح' : 'Prices updated successfully' })
     } catch (err: any) {
-      alert(err.message || 'Bulk price update failed')
+      setFeedback({ type: 'error', message: err?.message || (isAr ? 'فشل تحديث أسعار المنتجات' : 'Bulk price update failed') })
     } finally {
       setIsUpdatingPrices(false)
     }
@@ -299,13 +318,45 @@ export function ProductsPage() {
   // Single Product Delete Execution
   const executeSingleDelete = async () => {
     if (!deleteProductTarget) return
-    await productService.deleteProduct(deleteProductTarget.id, { id: user?.id || 'admin', fullName: user?.fullName || 'Admin' })
-    setDeleteProductTarget(null)
-    await loadProducts()
+    try {
+      await productService.deleteProduct(deleteProductTarget.id, { id: user?.id || 'admin', fullName: user?.fullName || 'Admin' })
+      setDeleteProductTarget(null)
+      await loadProducts()
+      setFeedback({ type: 'success', message: isAr ? 'تم حذف المنتج بنجاح' : 'Product deleted successfully' })
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err?.message || (isAr ? 'حدث خطأ أثناء حذف المنتج' : 'Failed to delete product') })
+    }
   }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
+      {/* Feedback Banner */}
+      {feedback && (
+        <div
+          className={`border-b px-6 py-2.5 text-xs font-semibold flex items-center justify-between shrink-0 animate-fade-in ${
+            feedback.type === 'success'
+              ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+              : feedback.type === 'warning'
+              ? 'bg-amber-500/15 border-amber-500/30 text-amber-600 dark:text-amber-400'
+              : 'bg-destructive/15 border-destructive/30 text-destructive'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {feedback.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+            )}
+            <span>{feedback.message}</span>
+          </div>
+          <button
+            onClick={() => setFeedback(null)}
+            className="p-0.5 hover:bg-black/10 dark:hover:bg-white/10 rounded transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
         <div>

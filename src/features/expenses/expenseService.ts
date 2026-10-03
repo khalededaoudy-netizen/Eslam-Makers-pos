@@ -6,6 +6,7 @@
 
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '@/services/db/database'
+import { withTransaction } from '@/services/db/transaction'
 import { auditService } from '@/services/audit/auditService'
 import { settingsService } from '@/services/settings/settingsService'
 import { PaymentMethodType } from '@/features/payments/types'
@@ -311,77 +312,72 @@ class ExpenseService {
     const now = new Date().toISOString()
 
     try {
-      await db.execute('BEGIN TRANSACTION')
-
-      // Insert expense record
-      await db.execute(
-        `INSERT INTO expenses (
-          id, expense_number, category_id, supplier_id, shift_id, register_id,
-          user_id, amount, payment_method, affects_cash, description,
-          reference, notes, status, recorded_by_id, expense_date, created_at, updated_at
-        ) VALUES (
-          ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?,
-          ?, ?, 'completed', ?, ?, ?, ?
-        )`,
-        [
-          expenseId,
-          expenseNumber,
-          input.categoryId || null,
-          input.supplierId || null,
-          shiftId,
-          registerId,
-          user.id,
-          amount,
-          paymentMethod,
-          affectsCash,
-          description,
-          input.reference?.trim() || null,
-          input.notes?.trim() || null,
-          user.id,
-          expenseDate,
-          now,
-          now,
-        ]
-      )
-
-      // If Cash expense -> create cash ledger movement and update shift cash_expenses
-      if (affectsCash === 1 && shiftId && registerId) {
-        const movementId = uuidv4()
-        await db.execute(
-          `INSERT INTO cash_movements (
-            id, register_id, shift_id, user_id, amount,
-            type, direction, payment_method, reason, reference_id, reference_type, notes, created_at
+      await withTransaction(async (d) => {
+        // Insert expense record
+        await d.execute(
+          `INSERT INTO expenses (
+            id, expense_number, category_id, supplier_id, shift_id, register_id,
+            user_id, amount, payment_method, affects_cash, description,
+            reference, notes, status, recorded_by_id, expense_date, created_at, updated_at
           ) VALUES (
+            ?, ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?,
-            'expense', 'out', 'cash', ?, ?, 'expense', ?, ?
+            ?, ?, 'completed', ?, ?, ?, ?
           )`,
           [
-            movementId,
-            registerId,
+            expenseId,
+            expenseNumber,
+            input.categoryId || null,
+            input.supplierId || null,
             shiftId,
+            registerId,
             user.id,
             amount,
-            `مصروف تشغيلي: ${description}`,
-            expenseId,
+            paymentMethod,
+            affectsCash,
+            description,
+            input.reference?.trim() || null,
             input.notes?.trim() || null,
+            user.id,
+            expenseDate,
+            now,
             now,
           ]
         )
 
-        // Increment shift cash_expenses counter
-        await db.execute(
-          `UPDATE shifts 
-           SET cash_expenses = cash_expenses + ?, updated_at = ?
-           WHERE id = ?`,
-          [amount, now, shiftId]
-        )
-      }
+        // If Cash expense -> create cash ledger movement and update shift cash_expenses
+        if (affectsCash === 1 && shiftId && registerId) {
+          const movementId = uuidv4()
+          await d.execute(
+            `INSERT INTO cash_movements (
+              id, register_id, shift_id, user_id, amount,
+              type, direction, payment_method, reason, reference_id, reference_type, notes, created_at
+            ) VALUES (
+              ?, ?, ?, ?, ?,
+              'expense', 'out', 'cash', ?, ?, 'expense', ?, ?
+            )`,
+            [
+              movementId,
+              registerId,
+              shiftId,
+              user.id,
+              amount,
+              `مصروف تشغيلي: ${description}`,
+              expenseId,
+              input.notes?.trim() || null,
+              now,
+            ]
+          )
 
-      await db.execute('COMMIT')
-    } catch (error) {
-      await db.execute('ROLLBACK')
-      throw error
+          // Increment shift cash_expenses counter
+          await d.execute(
+            `UPDATE shifts 
+             SET cash_expenses = cash_expenses + ?, updated_at = ?
+             WHERE id = ?`,
+            [amount, now, shiftId]
+          )
+        }
+      })
     } finally {
       this.inFlightOperations.delete(idempotencyKey)
     }
@@ -436,11 +432,9 @@ class ExpenseService {
 
     const now = new Date().toISOString()
 
-    try {
-      await db.execute('BEGIN TRANSACTION')
-
+    await withTransaction(async (d) => {
       // Mark expense as cancelled
-      await db.execute(
+      await d.execute(
         `UPDATE expenses 
          SET status = 'cancelled', notes = COALESCE(notes || '\n', '') || ?, updated_at = ?
          WHERE id = ?`,
@@ -450,7 +444,7 @@ class ExpenseService {
       // If it affected cash, reverse the cash movement
       if (existing.affectsCash && existing.paymentMethod === 'cash' && existing.shiftId && existing.registerId) {
         const reversalMovementId = uuidv4()
-        await db.execute(
+        await d.execute(
           `INSERT INTO cash_movements (
             id, register_id, shift_id, user_id, amount,
             type, direction, payment_method, reason, reference_id, reference_type, notes, created_at
@@ -472,19 +466,14 @@ class ExpenseService {
         )
 
         // Decrement shift cash_expenses counter
-        await db.execute(
+        await d.execute(
           `UPDATE shifts 
            SET cash_expenses = MAX(0, cash_expenses - ?), updated_at = ?
            WHERE id = ?`,
           [existing.amount, now, existing.shiftId]
         )
       }
-
-      await db.execute('COMMIT')
-    } catch (err) {
-      await db.execute('ROLLBACK')
-      throw err
-    }
+    })
 
     // Audit Logging
     await auditService.log({

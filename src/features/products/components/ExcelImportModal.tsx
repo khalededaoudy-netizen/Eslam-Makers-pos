@@ -42,6 +42,7 @@ export function ExcelImportModal({
   const [importing, setImporting] = useState(false)
   const [summary, setSummary] = useState<ExcelImportSummary | null>(null)
   const [importedCount, setImportedCount] = useState(0)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -53,12 +54,13 @@ export function ExcelImportModal({
 
     setSelectedFile(file)
     setParsing(true)
+    setErrorMessage(null)
     try {
       const res = await excelProductService.parseAndValidateExcel(file)
       setSummary(res)
       setStep('preview')
     } catch (err: any) {
-      alert(err.message || 'Failed to read Excel file')
+      setErrorMessage(err.message || (isAr ? 'فشل في قراءة ملف الإكسيل' : 'Failed to read Excel file'))
     } finally {
       setParsing(false)
     }
@@ -68,6 +70,7 @@ export function ExcelImportModal({
     if (!summary || !user) return
 
     setImporting(true)
+    setErrorMessage(null)
     try {
       const validRows = summary.rows.filter((r) => r.isValid)
       const count = await excelProductService.commitValidRows(validRows, {
@@ -78,7 +81,7 @@ export function ExcelImportModal({
       setStep('complete')
       onImportComplete()
     } catch (err: any) {
-      alert(err.message || 'Import failed')
+      setErrorMessage(err.message || (isAr ? 'فشل في استيراد المنتجات' : 'Import failed'))
     } finally {
       setImporting(false)
     }
@@ -89,6 +92,7 @@ export function ExcelImportModal({
     setSummary(null)
     setStep('upload')
     setImportedCount(0)
+    setErrorMessage(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -117,6 +121,19 @@ export function ExcelImportModal({
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Error Alert */}
+        {errorMessage && (
+          <div className="mx-6 mt-4 p-3 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive text-xs font-semibold flex items-center justify-between shrink-0 animate-fade-in">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+            <button onClick={() => setErrorMessage(null)} className="p-0.5 hover:bg-destructive/20 rounded">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6">

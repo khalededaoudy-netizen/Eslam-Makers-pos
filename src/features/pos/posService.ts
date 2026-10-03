@@ -117,9 +117,9 @@ class PosService {
   }
 
   /**
-   * Get top selling products for POS Quick Access Best Sellers panel
+   * Get top selling products for POS category filter (ordered by total sold quantity)
    */
-  async getBestSellers(limit = 10): Promise<PosProduct[]> {
+  async getBestSellers(limit = 60): Promise<PosProduct[]> {
     const db = getDb()
     try {
       const rows = await db.select<PosProduct[]>(`
@@ -137,14 +137,16 @@ class PosService {
           pu.allow_decimal,
           p.drawer_location,
           pc.name_ar as category_name,
+          pb.barcode,
           COALESCE(SUM(si.quantity), 0) as total_sold
         FROM sale_items si
         JOIN products p ON p.id = si.product_id
         JOIN product_units pu ON pu.id = p.unit_id
         LEFT JOIN product_categories pc ON pc.id = p.category_id
+        LEFT JOIN product_barcodes pb ON pb.product_id = p.id AND pb.is_default = 1
         WHERE p.is_active = 1
         GROUP BY si.product_id
-        ORDER BY total_sold DESC
+        ORDER BY total_sold DESC, p.name_ar ASC
         LIMIT ?
       `, [limit])
 
@@ -155,7 +157,52 @@ class PosService {
       console.warn('Error fetching best sellers from sale_items, fallback to recent products:', err)
     }
 
-    // Fallback if no sales yet: return first 10 active products
+    // Fallback if no sales yet: return active products
+    return this.getProductsByCategory(undefined, limit)
+  }
+
+  /**
+   * Get most requested products for POS category filter (ordered by order frequency)
+   */
+  async getMostRequested(limit = 60): Promise<PosProduct[]> {
+    const db = getDb()
+    try {
+      const rows = await db.select<PosProduct[]>(`
+        SELECT
+          p.id,
+          p.name_ar,
+          p.name_en,
+          p.sku,
+          p.selling_price,
+          p.purchase_price,
+          p.current_stock,
+          p.min_stock,
+          p.image_path,
+          pu.symbol as unit_symbol,
+          pu.allow_decimal,
+          p.drawer_location,
+          pc.name_ar as category_name,
+          pb.barcode,
+          COUNT(DISTINCT si.sale_id) as order_frequency
+        FROM sale_items si
+        JOIN products p ON p.id = si.product_id
+        JOIN product_units pu ON pu.id = p.unit_id
+        LEFT JOIN product_categories pc ON pc.id = p.category_id
+        LEFT JOIN product_barcodes pb ON pb.product_id = p.id AND pb.is_default = 1
+        WHERE p.is_active = 1
+        GROUP BY si.product_id
+        ORDER BY order_frequency DESC, p.name_ar ASC
+        LIMIT ?
+      `, [limit])
+
+      if (rows && rows.length > 0) {
+        return rows
+      }
+    } catch (err) {
+      console.warn('Error fetching most requested from sale_items, fallback to recent products:', err)
+    }
+
+    // Fallback if no sales yet: return active products
     return this.getProductsByCategory(undefined, limit)
   }
 
@@ -276,7 +323,8 @@ class PosService {
     items: PosCartItem[],
     cartDiscountAmount = 0,
     taxEnabled = false,
-    taxRate = 0
+    taxRate = 0,
+    cartDiscountType: 'pct' | 'fixed' = 'fixed'
   ): PosCartSummary {
     const itemsCount = items.length
     const totalQuantity = items.reduce((sum, i) => sum + i.quantity, 0)
@@ -295,6 +343,7 @@ class PosService {
       subtotal,
       cartDiscountPct,
       cartDiscountAmount: cleanDiscount,
+      cartDiscountType,
       taxableAmount,
       taxRate: taxEnabled ? taxRate : 0,
       taxAmount,
@@ -313,16 +362,18 @@ class PosService {
     const db = getDb()
     const id = uuidv4()
     const cartData = JSON.stringify(input.items)
+    const discountPct = input.discountPct || (input.subtotal > 0 ? (input.discountAmount / input.subtotal) * 100 : 0)
+    const discountType = input.discountType || (discountPct > 0 ? 'pct' : 'fixed')
 
     await db.execute(`
       INSERT INTO held_carts (
         id, cashier_id, cashier_name, customer_id, customer_name,
-        cart_data, subtotal, discount_amount, tax_amount, total, notes,
-        held_at, created_at
+        cart_data, subtotal, discount_amount, discount_pct, discount_type,
+        tax_amount, total, notes, held_at, created_at
       ) VALUES (
         ?, ?, ?, ?, ?,
-        ?, ?, ?, ?, ?, ?,
-        strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
       )
     `, [
       id,
@@ -333,6 +384,8 @@ class PosService {
       cartData,
       input.subtotal,
       input.discountAmount,
+      discountPct,
+      discountType,
       input.taxAmount,
       input.total,
       input.notes || null,

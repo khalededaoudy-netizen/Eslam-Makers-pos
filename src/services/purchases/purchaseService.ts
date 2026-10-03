@@ -6,6 +6,7 @@
 
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '@/services/db/database'
+import { withTransaction } from '@/services/db/transaction'
 import { auditService } from '@/services/audit/auditService'
 import { inventoryService } from '@/services/inventory/inventoryService'
 
@@ -335,10 +336,9 @@ class PurchaseService {
     const receivedAt = input.receiveImmediately ? now : null
 
     // ── ATOMIC TRANSACTION ──
-    await db.execute('BEGIN TRANSACTION')
-    try {
+    await withTransaction(async (d) => {
       // 1. Insert Purchase
-      await db.execute(`
+      await d.execute(`
         INSERT INTO purchases (
           id, purchase_number, supplier_id, received_by_id, location_id,
           status, subtotal, discount_amount, tax_amount, total,
@@ -378,7 +378,7 @@ class PurchaseService {
         const lineTotal = it.quantity * it.unitCost
         const recQty = input.receiveImmediately ? it.quantity : 0
 
-        await db.execute(`
+        await d.execute(`
           INSERT INTO purchase_items (
             id, purchase_id, product_id, quantity, unit_cost, subtotal, received_qty
           ) VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -406,7 +406,7 @@ class PurchaseService {
           }, user)
 
           // Update product purchase cost
-          await db.execute(
+          await d.execute(
             "UPDATE products SET purchase_price = ?, updated_at = ? WHERE id = ?",
             [it.unitCost, now, it.productId]
           )
@@ -415,7 +415,7 @@ class PurchaseService {
 
       // 3. Record Initial Payment if provided
       if (initialPay > 0) {
-        await db.execute(`
+        await d.execute(`
           INSERT INTO purchase_payments (
             id, purchase_id, supplier_id, user_id, amount, payment_method, reference, notes, created_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -434,36 +434,31 @@ class PurchaseService {
 
       // 4. Update Supplier Balance (balance owed += remaining balance)
       if (balance > 0) {
-        await db.execute(
+        await d.execute(
           "UPDATE suppliers SET balance = balance + ?, updated_at = ? WHERE id = ?",
           [balance, now, input.supplierId]
         )
       }
+    })
 
-      await db.execute('COMMIT')
+    // 5. Audit Log
+    await auditService.log({
+      userId: user?.id,
+      userFullName: user?.fullName,
+      action: 'create_purchase',
+      resource: 'purchases',
+      resourceId: purchaseId,
+      details: {
+        purchaseNumber,
+        supplierId: input.supplierId,
+        total,
+        paidAmount: initialPay,
+        status,
+        itemsCount: input.items.length,
+      },
+    })
 
-      // 5. Audit Log
-      await auditService.log({
-        userId: user?.id,
-        userFullName: user?.fullName,
-        action: 'create_purchase',
-        resource: 'purchases',
-        resourceId: purchaseId,
-        details: {
-          purchaseNumber,
-          supplierId: input.supplierId,
-          total,
-          paidAmount: initialPay,
-          status,
-          itemsCount: input.items.length,
-        },
-      })
-
-      return { purchaseId, purchaseNumber }
-    } catch (err) {
-      await db.execute('ROLLBACK')
-      throw err
-    }
+    return { purchaseId, purchaseNumber }
   }
 
   /**
@@ -490,9 +485,12 @@ class PurchaseService {
     const now = new Date().toISOString()
 
     // ── ATOMIC TRANSACTION ──
-    await db.execute('BEGIN TRANSACTION')
-    try {
-      const purchRows = await db.select<any[]>(
+    let purchase: any
+    let newStatus: PurchaseStatus = 'partially_received' as PurchaseStatus
+    let totalReceivedNow = 0
+
+    await withTransaction(async (d) => {
+      const purchRows = await d.select<any[]>(
         'SELECT id, purchase_number, status, supplier_id FROM purchases WHERE id = ?',
         [params.purchaseId]
       )
@@ -500,7 +498,7 @@ class PurchaseService {
         throw new Error('Purchase not found')
       }
 
-      const purchase = purchRows[0]
+      purchase = purchRows[0]
       if (purchase.status === 'completed') {
         throw new Error('Purchase is already fully received and completed')
       }
@@ -509,19 +507,19 @@ class PurchaseService {
       }
 
       // Check Location exists
-      const locRows = await db.select<any[]>('SELECT id, name FROM storage_locations WHERE id = ?', [params.locationId])
+      const locRows = await d.select<any[]>('SELECT id, name FROM storage_locations WHERE id = ?', [params.locationId])
       if (!locRows || locRows.length === 0) {
         throw new Error('Selected storage location does not exist')
       }
 
-      let totalReceivedNow = 0
+      totalReceivedNow = 0
 
       // Process item receiving
       for (const rec of params.items) {
         const qtyToRec = Number(rec.quantityToReceive) || 0
         if (qtyToRec <= 0) continue
 
-        const itemRows = await db.select<any[]>(
+        const itemRows = await d.select<any[]>(
           'SELECT id, product_id, quantity, received_qty, unit_cost FROM purchase_items WHERE id = ? AND purchase_id = ?',
           [rec.itemId, params.purchaseId]
         )
@@ -542,7 +540,7 @@ class PurchaseService {
         const newRecQty = currentRec + qtyToRec
 
         // 1. Update purchase item received quantity
-        await db.execute(
+        await d.execute(
           'UPDATE purchase_items SET received_qty = ? WHERE id = ?',
           [newRecQty, item.id]
         )
@@ -560,7 +558,7 @@ class PurchaseService {
         }, user)
 
         // 3. Update product purchase price
-        await db.execute(
+        await d.execute(
           'UPDATE products SET purchase_price = ?, updated_at = ? WHERE id = ?',
           [item.unit_cost, now, item.product_id]
         )
@@ -573,7 +571,7 @@ class PurchaseService {
       }
 
       // 4. Calculate new purchase status
-      const allItems = await db.select<any[]>(
+      const allItems = await d.select<any[]>(
         'SELECT quantity, received_qty FROM purchase_items WHERE purchase_id = ?',
         [params.purchaseId]
       )
@@ -586,10 +584,10 @@ class PurchaseService {
         }
       }
 
-      const newStatus: PurchaseStatus = allCompleted ? 'completed' : 'partially_received'
+      newStatus = allCompleted ? 'completed' : 'partially_received'
 
       // 5. Update purchase status, location, and timestamp
-      await db.execute(`
+      await d.execute(`
         UPDATE purchases SET
           status = ?,
           location_id = ?,
@@ -605,29 +603,24 @@ class PurchaseService {
         now,
         params.purchaseId,
       ])
+    })
 
-      await db.execute('COMMIT')
+    // 6. Audit Log
+    await auditService.log({
+      userId: user?.id,
+      userFullName: user?.fullName,
+      action: newStatus === 'completed' ? 'receive_purchase_complete' : 'receive_purchase_partial',
+      resource: 'purchases',
+      resourceId: params.purchaseId,
+      details: {
+        purchaseNumber: purchase?.purchase_number,
+        totalReceivedNow,
+        locationId: params.locationId,
+        newStatus,
+      },
+    })
 
-      // 6. Audit Log
-      await auditService.log({
-        userId: user?.id,
-        userFullName: user?.fullName,
-        action: allCompleted ? 'receive_purchase_complete' : 'receive_purchase_partial',
-        resource: 'purchases',
-        resourceId: params.purchaseId,
-        details: {
-          purchaseNumber: purchase.purchase_number,
-          totalReceivedNow,
-          locationId: params.locationId,
-          newStatus,
-        },
-      })
-
-      return { status: newStatus, totalReceivedNow }
-    } catch (err) {
-      await db.execute('ROLLBACK')
-      throw err
-    }
+    return { status: newStatus, totalReceivedNow }
   }
 
   /**
@@ -652,9 +645,13 @@ class PurchaseService {
     const now = new Date().toISOString()
 
     // ── ATOMIC TRANSACTION ──
-    await db.execute('BEGIN TRANSACTION')
-    try {
-      const purchRows = await db.select<any[]>(
+    let newPaid = 0
+    let newBalance = 0
+    let newPaymentStatus: PaymentStatus = 'unpaid'
+    let purchase: any
+
+    await withTransaction(async (d) => {
+      const purchRows = await d.select<any[]>(
         'SELECT id, purchase_number, supplier_id, total, paid_amount, balance FROM purchases WHERE id = ?',
         [params.purchaseId]
       )
@@ -662,20 +659,20 @@ class PurchaseService {
         throw new Error('Purchase not found')
       }
 
-      const purchase = purchRows[0]
+      purchase = purchRows[0]
       const currentBalance = Number(purchase.balance) || 0
 
       if (payAmount > currentBalance) {
         throw new Error(`Payment amount (${payAmount}) cannot exceed remaining balance (${currentBalance})`)
       }
 
-      const newPaid = (Number(purchase.paid_amount) || 0) + payAmount
-      const newBalance = currentBalance - payAmount
-      const newPaymentStatus: PaymentStatus = newBalance <= 0 ? 'paid' : 'partial'
+      newPaid = (Number(purchase.paid_amount) || 0) + payAmount
+      newBalance = currentBalance - payAmount
+      newPaymentStatus = newBalance <= 0 ? 'paid' : 'partial'
       const paymentId = uuidv4()
 
       // 1. Insert Payment Record
-      await db.execute(`
+      await d.execute(`
         INSERT INTO purchase_payments (
           id, purchase_id, supplier_id, user_id, amount, payment_method, reference, notes, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -692,7 +689,7 @@ class PurchaseService {
       ])
 
       // 2. Update Purchase
-      await db.execute(`
+      await d.execute(`
         UPDATE purchases SET
           paid_amount = ?,
           balance = ?,
@@ -703,34 +700,29 @@ class PurchaseService {
 
       // 3. Update Supplier Balance
       if (purchase.supplier_id) {
-        await db.execute(
+        await d.execute(
           'UPDATE suppliers SET balance = balance - ?, updated_at = ? WHERE id = ?',
           [payAmount, now, purchase.supplier_id]
         )
       }
+    })
 
-      await db.execute('COMMIT')
+    // 4. Audit Log
+    await auditService.log({
+      userId: user?.id,
+      userFullName: user?.fullName,
+      action: 'purchase_payment',
+      resource: 'purchases',
+      resourceId: params.purchaseId,
+      details: {
+        purchaseNumber: purchase?.purchase_number,
+        amountPaid: payAmount,
+        newBalance,
+        paymentMethod: params.paymentMethod,
+      },
+    })
 
-      // 4. Audit Log
-      await auditService.log({
-        userId: user?.id,
-        userFullName: user?.fullName,
-        action: 'purchase_payment',
-        resource: 'purchases',
-        resourceId: params.purchaseId,
-        details: {
-          purchaseNumber: purchase.purchase_number,
-          amountPaid: payAmount,
-          newBalance,
-          paymentMethod: params.paymentMethod,
-        },
-      })
-
-      return { newPaid, newBalance, paymentStatus: newPaymentStatus }
-    } catch (err) {
-      await db.execute('ROLLBACK')
-      throw err
-    }
+    return { newPaid, newBalance, paymentStatus: newPaymentStatus }
   }
 
   /**
@@ -741,15 +733,15 @@ class PurchaseService {
     reason: string = 'Cancelled by user',
     user?: { id?: string; fullName?: string }
   ): Promise<void> {
-    const db = getDb()
     const now = new Date().toISOString()
+    let purchaseNumber = ''
 
-    await db.execute('BEGIN TRANSACTION')
-    try {
-      const rows = await db.select<any[]>('SELECT * FROM purchases WHERE id = ?', [id])
+    await withTransaction(async (d) => {
+      const rows = await d.select<any[]>('SELECT * FROM purchases WHERE id = ?', [id])
       if (!rows || rows.length === 0) throw new Error('Purchase not found')
 
       const purchase = rows[0]
+      purchaseNumber = purchase.purchase_number
       if (purchase.status === 'completed' || purchase.status === 'partially_received') {
         throw new Error('Cannot cancel a received purchase invoice with active stock movements')
       }
@@ -760,32 +752,27 @@ class PurchaseService {
       // If supplier balance had recorded unpaid amount, reverse it
       const unpaidBalance = Number(purchase.balance) || 0
       if (unpaidBalance > 0 && purchase.supplier_id) {
-        await db.execute(
+        await d.execute(
           'UPDATE suppliers SET balance = balance - ?, updated_at = ? WHERE id = ?',
           [unpaidBalance, now, purchase.supplier_id]
         )
       }
 
       // Update purchase status to cancelled
-      await db.execute(
+      await d.execute(
         "UPDATE purchases SET status = 'cancelled', notes = COALESCE(notes || ' | ', '') || ?, updated_at = ? WHERE id = ?",
         [`Cancelled: ${reason}`, now, id]
       )
+    })
 
-      await db.execute('COMMIT')
-
-      await auditService.log({
-        userId: user?.id,
-        userFullName: user?.fullName,
-        action: 'cancel_purchase',
-        resource: 'purchases',
-        resourceId: id,
-        details: { purchaseNumber: purchase.purchase_number, reason },
-      })
-    } catch (err) {
-      await db.execute('ROLLBACK')
-      throw err
-    }
+    await auditService.log({
+      userId: user?.id,
+      userFullName: user?.fullName,
+      action: 'cancel_purchase',
+      resource: 'purchases',
+      resourceId: id,
+      details: { purchaseNumber, reason },
+    })
   }
 
   /**

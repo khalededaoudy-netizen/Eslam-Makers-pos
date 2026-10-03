@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import {
   X, ShoppingBag, PackageCheck, DollarSign, Calendar, MapPin,
   Truck, CheckCircle2, AlertTriangle, Clock, XCircle, RotateCcw,
-  Receipt, FileText, Ban
+  Receipt, FileText, Ban, Loader2
 } from 'lucide-react'
 import { purchaseService, PurchaseListItem, PurchaseItemDetail, PurchasePaymentItem } from '@/services/purchases'
 import { ReceivePurchaseModal } from './ReceivePurchaseModal'
@@ -24,7 +24,8 @@ export function PurchaseDetailsModal({
   purchaseId,
   onRefresh,
 }: PurchaseDetailsModalProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const isRtl = i18n.language === 'ar'
   const { user } = useAuthStore()
   const { can, isAdmin } = usePermission()
 
@@ -52,6 +53,11 @@ export function PurchaseDetailsModal({
     }
   }
 
+  const [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState(false)
+  const [cancelReason, setCancelReason] = useState('')
+  const [isCancelling, setIsCancelling] = useState(false)
+  const [cancelError, setCancelError] = useState<string | null>(null)
+
   useEffect(() => {
     if (isOpen && purchaseId) {
       loadDetails()
@@ -60,17 +66,26 @@ export function PurchaseDetailsModal({
 
   if (!isOpen || !purchaseId) return null
 
-  const handleCancelInvoice = async () => {
+  const handleExecuteCancel = async (e: React.FormEvent) => {
+    e.preventDefault()
     if (!data) return
-    const reason = window.prompt(t('purchases.cancelReasonPrompt', 'يرجى إدخال سبب إلغاء الفاتورة:'))
-    if (reason !== null && reason.trim()) {
-      try {
-        await purchaseService.cancelPurchase(data.purchase.id, reason, user || undefined)
-        loadDetails()
-        onRefresh()
-      } catch (err: any) {
-        alert(err.message || 'Error cancelling purchase')
-      }
+    if (!cancelReason.trim()) {
+      setCancelError(t('purchases.cancelReasonRequired', 'يرجى إدخال سبب إلغاء الفاتورة'))
+      return
+    }
+
+    setIsCancelling(true)
+    setCancelError(null)
+    try {
+      await purchaseService.cancelPurchase(data.purchase.id, cancelReason.trim(), user || undefined)
+      setIsCancelConfirmOpen(false)
+      setCancelReason('')
+      loadDetails()
+      onRefresh()
+    } catch (err: any) {
+      setCancelError(err?.message || (isRtl ? 'حدث خطأ أثناء إلغاء الفاتورة' : 'Error cancelling purchase'))
+    } finally {
+      setIsCancelling(false)
     }
   }
 
@@ -244,7 +259,11 @@ export function PurchaseDetailsModal({
           <div className="flex items-center gap-2">
             {canCancel && (
               <button
-                onClick={handleCancelInvoice}
+                onClick={() => {
+                  setCancelError(null)
+                  setCancelReason('')
+                  setIsCancelConfirmOpen(true)
+                }}
                 className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 flex items-center gap-1.5 transition-colors"
               >
                 <Ban className="w-3.5 h-3.5" />
@@ -283,6 +302,71 @@ export function PurchaseDetailsModal({
           </div>
         </div>
       </div>
+
+      {/* Cancel Purchase Reason Modal */}
+      {isCancelConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-muted/40">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-500">
+                  <Ban className="w-4 h-4" />
+                </div>
+                <h3 className="text-sm font-bold text-foreground">
+                  {t('purchases.cancelConfirmTitle', 'تأكيد إلغاء فاتورة الشراء')}
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsCancelConfirmOpen(false)}
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleExecuteCancel} className="p-6 space-y-4">
+              {cancelError && (
+                <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive text-xs font-semibold flex items-center gap-2 animate-fade-in">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{cancelError}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">
+                  {t('purchases.cancelReason', 'سبب الإلغاء')} <span className="text-destructive">*</span>
+                </label>
+                <textarea
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder={t('purchases.cancelReasonPlaceholder', 'يرجى كتابة سبب إلغاء الفاتورة بالتفصيل...')}
+                  className="w-full h-24 p-3 rounded-xl bg-input border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCancelConfirmOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-muted text-foreground transition-colors"
+                >
+                  {t('common.cancel', 'تراجع')}
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCancelling || !cancelReason.trim()}
+                  className="px-4 py-2 text-xs font-bold rounded-xl bg-rose-600 hover:bg-rose-700 text-white flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                >
+                  {isCancelling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ban className="w-3.5 h-3.5" />}
+                  <span>{isCancelling ? t('common.loading', 'جارٍ الإلغاء...') : t('purchases.confirmCancel', 'تأكيد الإلغاء')}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Sub Modals */}
       {data && isReceiveOpen && (

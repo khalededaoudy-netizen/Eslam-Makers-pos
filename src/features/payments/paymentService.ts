@@ -5,6 +5,7 @@
 
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '@/services/db/database'
+import { withTransaction } from '@/services/db/transaction'
 import { auditService } from '@/services/audit/auditService'
 import {
   PaymentRecord,
@@ -67,10 +68,9 @@ class PaymentService {
     const paymentId = uuidv4()
     const userId = user?.id || input.userId
 
-    await db.execute('BEGIN TRANSACTION')
-    try {
+    await withTransaction(async (d) => {
       // 1. Insert Payment Record
-      await db.execute(`
+      await d.execute(`
         INSERT INTO payments (
           id, sale_id, shift_id, register_id, user_id, customer_id,
           method, amount, reference, notes, created_at
@@ -94,7 +94,7 @@ class PaymentService {
       // 2. If Cash: Record in cash_movements ledger to update physical drawer cash
       if (input.method === 'cash') {
         const movementId = uuidv4()
-        await db.execute(`
+        await d.execute(`
           INSERT INTO cash_movements (
             id, register_id, shift_id, user_id, amount,
             type, direction, reason, reference_id, reference_type, notes, created_at
@@ -112,12 +112,7 @@ class PaymentService {
           input.notes || null,
         ])
       }
-
-      await db.execute('COMMIT')
-    } catch (err) {
-      await db.execute('ROLLBACK')
-      throw err
-    }
+    })
 
     // Audit log
     await auditService.log({

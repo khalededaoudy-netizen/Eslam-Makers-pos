@@ -6,6 +6,7 @@
 import bcrypt from 'bcryptjs'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db/database'
+import { withTransaction } from '../db/transaction'
 import { auditService } from '../audit/auditService'
 
 export interface AuthUser {
@@ -676,15 +677,13 @@ class AuthService {
       throw new Error('Permission denied')
     }
 
-    const db = getDb()
-    await db.execute('BEGIN TRANSACTION')
-    try {
-      await db.execute('DELETE FROM user_permissions WHERE user_id = ?', [userId])
+    await withTransaction(async (d) => {
+      await d.execute('DELETE FROM user_permissions WHERE user_id = ?', [userId])
 
       for (const perm of permissions) {
         if (perm === '*') {
           for (const sp of SYSTEM_PERMISSIONS) {
-            await db.execute(
+            await d.execute(
               'INSERT INTO user_permissions (id, user_id, resource, action, allowed) VALUES (?, ?, ?, ?, 1)',
               [uuidv4(), userId, sp.resource, sp.action]
             )
@@ -692,19 +691,14 @@ class AuthService {
         } else {
           const [resource, action] = perm.split(':')
           if (resource && action) {
-            await db.execute(
+            await d.execute(
               'INSERT INTO user_permissions (id, user_id, resource, action, allowed) VALUES (?, ?, ?, ?, 1)',
               [uuidv4(), userId, resource, action]
             )
           }
         }
       }
-
-      await db.execute('COMMIT')
-    } catch (err) {
-      await db.execute('ROLLBACK')
-      throw err
-    }
+    })
 
     await auditService.log({
       userId: actor.id,
@@ -795,8 +789,38 @@ class AuthService {
     return { success: true }
   }
 
-  /** Deactivate a user with self-protection */
-  async deleteUser(userId: string, actor: AuthUser): Promise<{ success: boolean; error?: string }> {
+  /** Check if a user has any historical references in database tables */
+  async hasHistoricalReferences(userId: string): Promise<boolean> {
+    const db = getDb()
+    const checks = [
+      { sql: 'SELECT 1 FROM sales WHERE cashier_id = ? LIMIT 1', multi: false },
+      { sql: 'SELECT 1 FROM returns WHERE user_id = ? OR processed_by_id = ? LIMIT 1', multi: true },
+      { sql: 'SELECT 1 FROM expenses WHERE user_id = ? OR recorded_by_id = ? LIMIT 1', multi: true },
+      { sql: 'SELECT 1 FROM payments WHERE user_id = ? LIMIT 1', multi: false },
+      { sql: 'SELECT 1 FROM shifts WHERE user_id = ? LIMIT 1', multi: false },
+      { sql: 'SELECT 1 FROM inventory_movements WHERE user_id = ? LIMIT 1', multi: false },
+      { sql: 'SELECT 1 FROM purchases WHERE received_by_id = ? LIMIT 1', multi: false },
+      { sql: 'SELECT 1 FROM purchase_payments WHERE user_id = ? LIMIT 1', multi: false },
+      { sql: 'SELECT 1 FROM cash_movements WHERE user_id = ? LIMIT 1', multi: false },
+      { sql: 'SELECT 1 FROM audit_logs WHERE user_id = ? LIMIT 1', multi: false },
+      { sql: 'SELECT 1 FROM backups WHERE user_id = ? LIMIT 1', multi: false },
+    ]
+
+    for (const check of checks) {
+      try {
+        const params = check.multi ? [userId, userId] : [userId]
+        const rows = await db.select<any[]>(check.sql, params)
+        if (rows && rows.length > 0) return true
+      } catch (e) {
+        // Ignore table check if table is not present in environment
+      }
+    }
+
+    return false
+  }
+
+  /** Intelligently delete or deactivate a user with self-protection & referential safety */
+  async deleteUser(userId: string, actor: AuthUser): Promise<{ success: boolean; mode?: 'hard_deleted' | 'soft_deactivated'; fallbackNotice?: boolean; error?: string }> {
     // 1. Permission check
     if (actor.roleName !== 'admin' && !actor.permissions.includes('users:delete') && !actor.permissions.includes('*')) {
       return { success: false, error: 'permission_denied' }
@@ -808,8 +832,8 @@ class AuthService {
     }
 
     const db = getDb()
-    const targetUsers = await db.select<Array<{ role_name: string; is_active: number; username: string }>>(
-      `SELECT r.name as role_name, u.is_active, u.username
+    const targetUsers = await db.select<Array<{ id: string; role_name: string; is_active: number; username: string; full_name: string }>>(
+      `SELECT u.id, r.name as role_name, u.is_active, u.username, u.full_name
        FROM users u
        JOIN roles r ON r.id = u.role_id
        WHERE u.id = ?`,
@@ -818,7 +842,7 @@ class AuthService {
     if (targetUsers.length === 0) return { success: false, error: 'user_not_found' }
     const targetUser = targetUsers[0]
 
-    // Self-protection: cannot delete last active admin
+    // 3. Self-protection: cannot delete last active admin
     if (targetUser.role_name === 'admin' && targetUser.is_active) {
       const adminCount = await this.countActiveAdmins()
       if (adminCount <= 1) {
@@ -826,12 +850,37 @@ class AuthService {
       }
     }
 
-    // Soft deactivation to preserve financial/transaction references
+    // 4. Check historical references
+    const hasHistory = await this.hasHistoricalReferences(userId)
+
+    if (!hasHistory) {
+      // User has no historical dependencies -> Hard delete
+      try {
+        await db.execute('DELETE FROM user_permissions WHERE user_id = ?', [userId])
+        await db.execute('DELETE FROM sessions WHERE user_id = ?', [userId])
+        await db.execute('DELETE FROM users WHERE id = ?', [userId])
+
+        await auditService.log({
+          userId: actor.id,
+          userFullName: actor.fullName,
+          action: 'delete_user',
+          resource: 'user',
+          resourceId: userId,
+          details: { username: targetUser.username, mode: 'hard_deleted' },
+        })
+
+        return { success: true, mode: 'hard_deleted' }
+      } catch (err: any) {
+        console.warn(`Hard delete failed for user ${userId}, falling back to soft deactivation:`, err)
+        // Fallback to soft deactivation if a foreign key constraint blocked hard deletion
+      }
+    }
+
+    // User HAS historical references -> Soft deactivation to preserve financial/transaction integrity
     await db.execute(
       `UPDATE users SET is_active = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`,
       [userId]
     )
-    // Clear active sessions
     await db.execute('DELETE FROM sessions WHERE user_id = ?', [userId])
 
     await auditService.log({
@@ -840,10 +889,10 @@ class AuthService {
       action: 'deactivate_user',
       resource: 'user',
       resourceId: userId,
-      details: { username: targetUser.username, reason: 'deleted_by_admin' },
+      details: { username: targetUser.username, mode: 'soft_deactivated', reason: 'has_historical_references' },
     })
 
-    return { success: true }
+    return { success: true, mode: 'soft_deactivated', fallbackNotice: !hasHistory }
   }
 
   /** Clean expired sessions */

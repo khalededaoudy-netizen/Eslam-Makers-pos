@@ -31,6 +31,7 @@ import { useSettingsStore, Language, Theme, PaperWidth } from '@/stores/settings
 import { useAuthStore, usePermission } from '@/stores/authStore'
 import { backupService, BackupRecord } from '@/services/db/backupService'
 import { openExternalUrl, DEVELOPER_LINKEDIN_URL } from '@/lib/openUrl'
+import { getAvailablePrinters, printTestReceiptDirect } from '@/services/printer/directPrint'
 
 type TabType = 'general' | 'store' | 'pos' | 'receipt' | 'barcode' | 'database' | 'about'
 
@@ -47,6 +48,53 @@ export function SettingsPage() {
   const [successMsg, setSuccessMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+
+  // Printer List State
+  const [printersList, setPrintersList] = useState<string[]>([])
+  const [loadingPrinters, setLoadingPrinters] = useState(false)
+  const [isTestingPrinter, setIsTestingPrinter] = useState(false)
+
+  const loadPrinters = async () => {
+    setLoadingPrinters(true)
+    try {
+      const list = await getAvailablePrinters()
+      setPrintersList(list)
+    } catch (err) {
+      console.error('Failed to load printers list:', err)
+    } finally {
+      setLoadingPrinters(false)
+    }
+  }
+
+  useEffect(() => {
+    loadPrinters()
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'receipt') {
+      loadPrinters()
+    }
+  }, [activeTab])
+
+  const handleTestPrint = async () => {
+    setIsTestingPrinter(true)
+    setErrorMsg('')
+    setSuccessMsg('')
+    try {
+      const targetPrinter = formData.defaultPrinter || 'Default'
+      const res = await printTestReceiptDirect(targetPrinter)
+      if (res.success) {
+        setSuccessMsg(t('settings.testPrintSuccess', 'تم إرسال أمر الطباعة التجريبية بنجاح'))
+        setTimeout(() => setSuccessMsg(''), 4000)
+      } else {
+        setErrorMsg(res.message || t('settings.testPrintError', 'فشل في الطباعة التجريبية'))
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'فشل في الطباعة التجريبية')
+    } finally {
+      setIsTestingPrinter(false)
+    }
+  }
 
   // Backup & Restore State
   const [backupsList, setBackupsList] = useState<BackupRecord[]>([])
@@ -728,17 +776,45 @@ export function SettingsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
-                  {t('settings.defaultPrinter')}
-                </label>
-                <input
-                  type="text"
-                  disabled={!canEdit}
-                  value={formData.defaultPrinter}
-                  onChange={e => setFormData({ ...formData, defaultPrinter: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
-                  placeholder="Default"
-                />
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-muted-foreground">
+                    {t('settings.defaultPrinter', 'طابعة الإيصالات')}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={loadPrinters}
+                    disabled={loadingPrinters}
+                    className="text-xs text-primary hover:underline flex items-center gap-1 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${loadingPrinters ? 'animate-spin' : ''}`} />
+                    <span>تحديث</span>
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    disabled={!canEdit || loadingPrinters}
+                    value={formData.defaultPrinter}
+                    onChange={e => setFormData({ ...formData, defaultPrinter: e.target.value })}
+                    className="flex-1 px-3.5 py-2.5 rounded-xl bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
+                  >
+                    <option value="Default">Default (الطابعة الافتراضية للنظام)</option>
+                    {printersList.map((printerName) => (
+                      <option key={printerName} value={printerName}>
+                        {printerName}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleTestPrint}
+                    disabled={isTestingPrinter}
+                    className="px-3.5 py-2 rounded-xl bg-muted hover:bg-muted/80 text-foreground border border-border text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                    title="طباعة تجريبية سريعة"
+                  >
+                    <Printer className={`w-3.5 h-3.5 ${isTestingPrinter ? 'animate-spin' : ''}`} />
+                    <span>{isTestingPrinter ? 'جاري الاختبار...' : 'طباعة تجريبية'}</span>
+                  </button>
+                </div>
               </div>
 
               <div className="md:col-span-2">
@@ -750,7 +826,7 @@ export function SettingsPage() {
                   disabled={!canEdit}
                   value={formData.receiptHeader}
                   onChange={e => setFormData({ ...formData, receiptHeader: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary font-mono text-xs disabled:opacity-50"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border focus:outline-none focus:ring-2 focus:ring-primary font-mono text-xs disabled:opacity-50"
                   placeholder="Store Name&#10;Address & Phone"
                 />
               </div>
@@ -764,7 +840,7 @@ export function SettingsPage() {
                   disabled={!canEdit}
                   value={formData.receiptFooter}
                   onChange={e => setFormData({ ...formData, receiptFooter: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary font-mono text-xs disabled:opacity-50"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border focus:outline-none focus:ring-2 focus:ring-primary font-mono text-xs disabled:opacity-50"
                   placeholder="Thank you for shopping with us!"
                 />
               </div>

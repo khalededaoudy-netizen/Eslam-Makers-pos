@@ -53,6 +53,30 @@ class ReturnReceiptService {
       reference: p.reference || undefined,
     }))
 
+    let customerName = returnData.customerName || undefined
+    let customerCode = returnData.customerCode || undefined
+    let customerPhone = returnData.customerPhone || undefined
+
+    // Fallback: If customerCode is missing, trace relationship via customerId or original saleId
+    if (!customerCode && (returnData.customerId || returnData.saleId)) {
+      try {
+        const custRows = await db.select<Array<{ name: string; customer_code: string; phone: string | null }>>(`
+          SELECT c.name, c.customer_code, c.phone 
+          FROM customers c 
+          WHERE c.id = ? 
+             OR c.id = (SELECT customer_id FROM sales WHERE id = ?)
+          LIMIT 1
+        `, [returnData.customerId || '', returnData.saleId || ''])
+        if (custRows.length > 0) {
+          customerName = customerName || custRows[0].name || undefined
+          customerCode = custRows[0].customer_code || undefined
+          customerPhone = customerPhone || custRows[0].phone || undefined
+        }
+      } catch (e) {
+        console.warn('[returnReceiptService] Failed to query fallback customer details:', e)
+      }
+    }
+
     return {
       storeName,
       storeSubtitle,
@@ -65,8 +89,9 @@ class ReturnReceiptService {
       createdAt: returnData.createdAt,
       cashierName: returnData.userName || 'Cashier',
       registerName: returnData.registerName || undefined,
-      customerName: returnData.customerName || undefined,
-      customerPhone: returnData.customerPhone || undefined,
+      customerName,
+      customerCode,
+      customerPhone,
       items,
       subtotal: returnData.subtotal,
       discountAmount: returnData.discountAmount,

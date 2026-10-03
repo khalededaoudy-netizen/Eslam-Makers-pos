@@ -7,6 +7,7 @@
 
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '@/services/db/database'
+import { withTransaction } from '@/services/db/transaction'
 import { auditService } from '@/services/audit/auditService'
 import { returnReceiptService } from './returnReceiptService'
 import {
@@ -139,6 +140,7 @@ class ReturnService {
       total: number
       paid_amount: number
       customer_name: string | null
+      customer_code: string | null
       customer_phone: string | null
       cashier_name: string | null
     }>>(`
@@ -155,6 +157,7 @@ class ReturnService {
         s.total,
         s.paid_amount,
         c.name as customer_name,
+        c.customer_code as customer_code,
         c.phone as customer_phone,
         u.full_name as cashier_name
       FROM sales s
@@ -301,6 +304,7 @@ class ReturnService {
       status: sale.status,
       customerId: sale.customer_id,
       customerName: sale.customer_name,
+      customerCode: sale.customer_code,
       customerPhone: sale.customer_phone,
       cashierId: sale.cashier_id,
       cashierName: sale.cashier_name,
@@ -487,10 +491,9 @@ class ReturnService {
       const primaryRefundMethod = input.payments.length === 1 ? input.payments[0].method : 'other'
 
       // 9. Execute Atomic SQLite Transaction
-      await db.execute('BEGIN TRANSACTION')
-      try {
+      await withTransaction(async (d) => {
         // A. Insert Returns Record
-        await db.execute(`
+        await d.execute(`
           INSERT INTO returns (
             id, return_number, sale_id, processed_by_id, user_id, customer_id,
             shift_id, register_id, subtotal, discount_amount, tax_amount,
@@ -525,7 +528,7 @@ class ReturnService {
         // B. Insert Return Items
         for (const it of processedItems) {
           const returnItemId = uuidv4()
-          await db.execute(`
+          await d.execute(`
             INSERT INTO return_items (
               id, return_id, sale_item_id, product_id, product_name, product_sku, barcode,
               quantity, unit_price, discount_amount, tax_amount, subtotal, line_total,
@@ -554,7 +557,7 @@ class ReturnService {
           ])
 
           // C. Inventory Restoration (If resellable -> restore stock & insert movement)
-          const prodRows = await db.select<Array<{ current_stock: number }>>(
+          const prodRows = await d.select<Array<{ current_stock: number }>>(
             'SELECT current_stock FROM products WHERE id = ? LIMIT 1',
             [it.productId]
           )
@@ -562,13 +565,13 @@ class ReturnService {
 
           if (it.condition === 'resellable') {
             const stockAfter = stockBefore + it.quantity
-            await db.execute(
+            await d.execute(
               "UPDATE products SET current_stock = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?",
               [stockAfter, it.productId]
             )
 
             const invMovId = uuidv4()
-            await db.execute(`
+            await d.execute(`
               INSERT INTO inventory_movements (
                 id, product_id, type, quantity, stock_before, stock_after,
                 reference_id, reference_type, reason, notes, user_id, created_at
@@ -590,7 +593,7 @@ class ReturnService {
           } else {
             // Damaged / Defective -> Quarantined (stock not added back to sellable current_stock)
             const invMovId = uuidv4()
-            await db.execute(`
+            await d.execute(`
               INSERT INTO inventory_movements (
                 id, product_id, type, quantity, stock_before, stock_after,
                 reference_id, reference_type, reason, notes, user_id, created_at
@@ -614,7 +617,7 @@ class ReturnService {
         // D. Insert Refund Payments
         for (const p of input.payments) {
           const paymentId = uuidv4()
-          await db.execute(`
+          await d.execute(`
             INSERT INTO payments (
               id, return_id, shift_id, register_id, user_id, customer_id,
               method, amount, reference, notes, created_at
@@ -638,7 +641,7 @@ class ReturnService {
           // For Cash: Record in cash_movements ledger (physical drawer cash decrease)
           if (p.method === 'cash') {
             const cashMovId = uuidv4()
-            await db.execute(`
+            await d.execute(`
               INSERT INTO cash_movements (
                 id, register_id, shift_id, user_id, amount,
                 type, direction, payment_method, reason, reference_id, reference_type, notes, created_at
@@ -658,12 +661,7 @@ class ReturnService {
             ])
           }
         }
-
-        await db.execute('COMMIT')
-      } catch (txnError) {
-        await db.execute('ROLLBACK')
-        throw txnError
-      }
+      })
 
       // 10. Audit Logging
       await auditService.log({
@@ -728,6 +726,7 @@ class ReturnService {
       updated_at: string | null
       sale_invoice_number: string | null
       customer_name: string | null
+      customer_code: string | null
       customer_phone: string | null
       user_name: string | null
       register_name: string | null
@@ -736,7 +735,7 @@ class ReturnService {
         r.id,
         r.return_number,
         r.sale_id,
-        r.customer_id,
+        COALESCE(r.customer_id, s.customer_id) as customer_id,
         r.user_id,
         r.processed_by_id,
         r.shift_id,
@@ -754,12 +753,13 @@ class ReturnService {
         r.updated_at,
         s.invoice_number as sale_invoice_number,
         c.name as customer_name,
+        c.customer_code as customer_code,
         c.phone as customer_phone,
         u.full_name as user_name,
         reg.name as register_name
       FROM returns r
       LEFT JOIN sales s ON r.sale_id = s.id
-      LEFT JOIN customers c ON r.customer_id = c.id
+      LEFT JOIN customers c ON COALESCE(r.customer_id, s.customer_id) = c.id
       LEFT JOIN users u ON COALESCE(r.user_id, r.processed_by_id) = u.id
       LEFT JOIN cash_registers reg ON r.register_id = reg.id
       WHERE r.id = ?
@@ -825,6 +825,7 @@ class ReturnService {
       saleInvoiceNumber: r.sale_invoice_number || undefined,
       customerId: r.customer_id,
       customerName: r.customer_name,
+      customerCode: r.customer_code,
       customerPhone: r.customer_phone,
       userId: r.user_id || r.processed_by_id,
       userName: r.user_name,
@@ -912,7 +913,7 @@ class ReturnService {
       `SELECT COUNT(*) as count 
        FROM returns r 
        LEFT JOIN sales s ON r.sale_id = s.id 
-       LEFT JOIN customers c ON r.customer_id = c.id 
+       LEFT JOIN customers c ON COALESCE(r.customer_id, s.customer_id) = c.id 
        ${whereClause}`,
       params
     )
@@ -944,6 +945,7 @@ class ReturnService {
       updated_at: string | null
       sale_invoice_number: string | null
       customer_name: string | null
+      customer_code: string | null
       customer_phone: string | null
       user_name: string | null
       register_name: string | null
@@ -952,7 +954,7 @@ class ReturnService {
         r.id,
         r.return_number,
         r.sale_id,
-        r.customer_id,
+        COALESCE(r.customer_id, s.customer_id) as customer_id,
         r.user_id,
         r.processed_by_id,
         r.shift_id,
@@ -970,12 +972,13 @@ class ReturnService {
         r.updated_at,
         s.invoice_number as sale_invoice_number,
         c.name as customer_name,
+        c.customer_code as customer_code,
         c.phone as customer_phone,
         u.full_name as user_name,
         reg.name as register_name
       FROM returns r
       LEFT JOIN sales s ON r.sale_id = s.id
-      LEFT JOIN customers c ON r.customer_id = c.id
+      LEFT JOIN customers c ON COALESCE(r.customer_id, s.customer_id) = c.id
       LEFT JOIN users u ON COALESCE(r.user_id, r.processed_by_id) = u.id
       LEFT JOIN cash_registers reg ON r.register_id = reg.id
       ${whereClause}
@@ -990,6 +993,7 @@ class ReturnService {
       saleInvoiceNumber: r.sale_invoice_number || undefined,
       customerId: r.customer_id,
       customerName: r.customer_name,
+      customerCode: r.customer_code,
       customerPhone: r.customer_phone,
       userId: r.user_id || r.processed_by_id,
       userName: r.user_name,

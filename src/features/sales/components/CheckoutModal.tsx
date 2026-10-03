@@ -162,6 +162,7 @@ export function CheckoutModal({
 
   // Final confirmation handler
   const handleConfirm = async () => {
+    if (loading) return
     setError(null)
     setRawErrorDetails(null)
 
@@ -219,10 +220,10 @@ export function CheckoutModal({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
-      onClose()
+      if (!loading) onClose()
     } else if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
       e.preventDefault()
-      handleConfirm()
+      if (!loading) handleConfirm()
     }
   }
 

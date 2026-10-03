@@ -39,6 +39,8 @@ export interface CustomerSummary {
   phone?: string | null
 }
 
+export type DiscountType = 'pct' | 'fixed'
+
 interface CartState {
   items: CartItem[]
   customer: CustomerSummary | null
@@ -46,6 +48,7 @@ interface CartState {
   customerName: string | null
   discountAmount: number
   discountPct: number
+  discountType: DiscountType
   taxEnabled: boolean
   taxRate: number
   notes: string
@@ -67,7 +70,7 @@ interface CartState {
   updateQuantity: (id: string, qty: number) => { success: boolean; error?: string }
   updateDiscount: (id: string, pct: number, amount: number) => void
   setCustomer: (customer: CustomerSummary | null) => void
-  setCartDiscount: (pct: number, amount: number) => void
+  setCartDiscount: (pct: number, amount: number, type?: DiscountType) => void
   setTaxConfig: (enabled: boolean, rate: number) => void
   setNotes: (notes: string) => void
   setItems: (items: CartItem[]) => void
@@ -86,6 +89,27 @@ function calcItemSubtotal(item: Omit<CartItem, 'id' | 'subtotal' | 'profit'>): {
   return { subtotal, profit }
 }
 
+function recalculateCartDiscount(
+  items: CartItem[],
+  discountPct: number,
+  discountAmount: number,
+  discountType: DiscountType
+): { discountPct: number; discountAmount: number } {
+  const currentSubtotal = items.reduce((sum, i) => sum + i.subtotal, 0)
+  if (currentSubtotal <= 0) {
+    return { discountPct: 0, discountAmount: 0 }
+  }
+  if (discountType === 'pct') {
+    const cleanPct = Math.min(100, Math.max(0, Number(discountPct) || 0))
+    const cleanAmt = Number(((currentSubtotal * cleanPct) / 100).toFixed(2))
+    return { discountPct: cleanPct, discountAmount: cleanAmt }
+  } else {
+    const cleanAmt = Math.min(currentSubtotal, Math.max(0, Number(discountAmount) || 0))
+    const cleanPct = currentSubtotal > 0 ? Number(((cleanAmt / currentSubtotal) * 100).toFixed(2)) : 0
+    return { discountPct: cleanPct, discountAmount: cleanAmt }
+  }
+}
+
 export const useCartStore = create<CartState>()((set, get) => ({
   items: [],
   customer: null,
@@ -93,6 +117,7 @@ export const useCartStore = create<CartState>()((set, get) => ({
   customerName: null,
   discountAmount: 0,
   discountPct: 0,
+  discountType: 'fixed',
   taxEnabled: false,
   taxRate: 0,
   notes: '',
@@ -124,7 +149,7 @@ export const useCartStore = create<CartState>()((set, get) => ({
 
   get total() {
     const state = get()
-    return state.taxableAmount + state.taxAmount
+    return Math.max(0, state.taxableAmount + state.taxAmount)
   },
 
   get totalPaid() {
@@ -165,25 +190,35 @@ export const useCartStore = create<CartState>()((set, get) => ({
         return state
       }
 
+      let updatedItems: CartItem[] = []
       if (existing) {
-        return {
-          items: state.items.map(i => {
-            if (i.productId !== newItem.productId) return i
-            const qty = i.quantity + newItem.quantity
-            const { subtotal, profit } = calcItemSubtotal({ ...i, quantity: qty })
-            return { ...i, quantity: qty, stock: newItem.stock, subtotal, profit }
-          })
-        }
-      }
-
-      const { subtotal, profit } = calcItemSubtotal(newItem)
-      return {
-        items: [...state.items, {
+        updatedItems = state.items.map(i => {
+          if (i.productId !== newItem.productId) return i
+          const qty = i.quantity + newItem.quantity
+          const { subtotal, profit } = calcItemSubtotal({ ...i, quantity: qty })
+          return { ...i, quantity: qty, stock: newItem.stock, subtotal, profit }
+        })
+      } else {
+        const { subtotal, profit } = calcItemSubtotal(newItem)
+        updatedItems = [...state.items, {
           ...newItem,
           id: crypto.randomUUID(),
           subtotal,
           profit,
         }]
+      }
+
+      const { discountPct, discountAmount } = recalculateCartDiscount(
+        updatedItems,
+        state.discountPct,
+        state.discountAmount,
+        state.discountType
+      )
+
+      return {
+        items: updatedItems,
+        discountPct,
+        discountAmount,
       }
     })
 
@@ -191,7 +226,20 @@ export const useCartStore = create<CartState>()((set, get) => ({
   },
 
   removeItem: (id) =>
-    set(state => ({ items: state.items.filter(i => i.id !== id) })),
+    set(state => {
+      const updatedItems = state.items.filter(i => i.id !== id)
+      const { discountPct, discountAmount } = recalculateCartDiscount(
+        updatedItems,
+        state.discountPct,
+        state.discountAmount,
+        state.discountType
+      )
+      return {
+        items: updatedItems,
+        discountPct,
+        discountAmount,
+      }
+    }),
 
   updateQuantity: (id, qty) => {
     let result = { success: true } as { success: boolean; error?: string }
@@ -218,9 +266,23 @@ export const useCartStore = create<CartState>()((set, get) => ({
         return state
       }
 
-      const { subtotal, profit } = calcItemSubtotal({ ...item, quantity: qty })
+      const updatedItems = state.items.map(i => {
+        if (i.id !== id) return i
+        const { subtotal, profit } = calcItemSubtotal({ ...i, quantity: qty })
+        return { ...i, quantity: qty, subtotal, profit }
+      })
+
+      const { discountPct, discountAmount } = recalculateCartDiscount(
+        updatedItems,
+        state.discountPct,
+        state.discountAmount,
+        state.discountType
+      )
+
       return {
-        items: state.items.map(i => (i.id === id ? { ...i, quantity: qty, subtotal, profit } : i))
+        items: updatedItems,
+        discountPct,
+        discountAmount,
       }
     })
 
@@ -228,14 +290,27 @@ export const useCartStore = create<CartState>()((set, get) => ({
   },
 
   updateDiscount: (id, pct, amount) =>
-    set(state => ({
-      items: state.items.map(i => {
+    set(state => {
+      const updatedItems = state.items.map(i => {
         if (i.id !== id) return i
         const discountAmount = amount || (i.quantity * i.unitPrice * pct / 100)
         const { subtotal, profit } = calcItemSubtotal({ ...i, discountPct: pct, discountAmount })
         return { ...i, discountPct: pct, discountAmount, subtotal, profit }
       })
-    })),
+
+      const { discountPct, discountAmount } = recalculateCartDiscount(
+        updatedItems,
+        state.discountPct,
+        state.discountAmount,
+        state.discountType
+      )
+
+      return {
+        items: updatedItems,
+        discountPct,
+        discountAmount,
+      }
+    }),
 
   setCustomer: (customer) => set({
     customer,
@@ -243,13 +318,46 @@ export const useCartStore = create<CartState>()((set, get) => ({
     customerName: customer ? customer.name : null,
   }),
 
-  setCartDiscount: (pct, amount) => set({ discountPct: pct, discountAmount: amount }),
+  setCartDiscount: (pct, amount, type = 'fixed') => {
+    set((state) => {
+      const currentSubtotal = state.items.reduce((sum, i) => sum + i.subtotal, 0)
+      const cleanType: DiscountType = type === 'pct' ? 'pct' : 'fixed'
+      let cleanPct = 0
+      let cleanAmt = 0
+
+      if (cleanType === 'pct') {
+        cleanPct = Math.min(100, Math.max(0, Number(pct) || 0))
+        cleanAmt = Number(((currentSubtotal * cleanPct) / 100).toFixed(2))
+      } else {
+        cleanAmt = Math.min(currentSubtotal, Math.max(0, Number(amount) || 0))
+        cleanPct = currentSubtotal > 0 ? Number(((cleanAmt / currentSubtotal) * 100).toFixed(2)) : 0
+      }
+
+      return {
+        discountType: cleanType,
+        discountPct: cleanPct,
+        discountAmount: cleanAmt,
+      }
+    })
+  },
 
   setTaxConfig: (enabled, rate) => set({ taxEnabled: enabled, taxRate: rate }),
 
   setNotes: (notes) => set({ notes }),
 
-  setItems: (items) => set({ items }),
+  setItems: (items) => set(state => {
+    const { discountPct, discountAmount } = recalculateCartDiscount(
+      items,
+      state.discountPct,
+      state.discountAmount,
+      state.discountType
+    )
+    return {
+      items,
+      discountPct,
+      discountAmount,
+    }
+  }),
 
   addPayment: (payment) =>
     set(state => ({ payments: [...state.payments, payment] })),
@@ -264,9 +372,11 @@ export const useCartStore = create<CartState>()((set, get) => ({
     customerName: null,
     discountAmount: 0,
     discountPct: 0,
+    discountType: 'fixed',
     notes: '',
     payments: [],
   }),
 
   clearPayments: () => set({ payments: [] }),
 }))
+

@@ -5,7 +5,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
-import { getDb } from '@/services/db/database'
+import { getDb, withTransaction } from '@/services/db/database'
 import { auditService } from '@/services/audit/auditService'
 import { receiptService } from './receiptService'
 import {
@@ -99,7 +99,13 @@ class SalesService {
         throw new Error('Cannot process sales on a closed shift')
       }
 
-      const registerId = input.registerId || shiftRows[0].register_id
+      let registerId = input.registerId || shiftRows[0].register_id
+      if (!registerId) {
+        const defaultReg = await db.select<Array<{ id: string }>>('SELECT id FROM cash_registers WHERE is_active = 1 LIMIT 1')
+        if (defaultReg && defaultReg.length > 0) {
+          registerId = defaultReg[0].id
+        }
+      }
 
       // 4. Verify Customer if attached
       let customerName: string | undefined = undefined
@@ -218,6 +224,7 @@ class SalesService {
       // 6. Authoritative Totals Calculation
       const cartDiscountAmount = Math.min(computedSubtotal, Math.max(0, Number(input.discountAmount) || 0))
       const cartDiscountPct = Number(input.discountPct) || (computedSubtotal > 0 ? (cartDiscountAmount / computedSubtotal) * 100 : 0)
+      const discountType = input.discountType || (input.discountPct && input.discountPct > 0 ? 'pct' : 'fixed')
       const taxableAmount = Math.max(0, computedSubtotal - cartDiscountAmount)
 
       const taxRate = input.taxRate !== undefined ? input.taxRate : (isTaxEnabled ? systemTaxRate : 0)
@@ -255,29 +262,29 @@ class SalesService {
       const saleNumber = await this.generateSaleNumber()
 
       // 9. Execute Atomic SQLite Transaction
-      await db.execute('BEGIN TRANSACTION')
-      try {
+      await withTransaction(async (d) => {
         // A. Insert Sales Row
-        await db.execute(`
+        await d.execute(`
           INSERT INTO sales (
             id, invoice_number, shift_id, register_id, cashier_id, customer_id,
-            status, subtotal, discount_amount, discount_pct, tax_amount,
+            status, subtotal, discount_amount, discount_pct, discount_type, tax_amount,
             total, paid_amount, change_amount, notes, created_at, updated_at
           ) VALUES (
             ?, ?, ?, ?, ?, ?,
-            'completed', ?, ?, ?, ?,
+            'completed', ?, ?, ?, ?, ?,
             ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
           )
         `, [
           saleId,
           saleNumber,
           input.shiftId,
-          registerId,
+          registerId || null,
           user.id,
           input.customerId || null,
           Number(computedSubtotal.toFixed(2)),
           Number(cartDiscountAmount.toFixed(2)),
           Number(cartDiscountPct.toFixed(2)),
+          discountType,
           Number(taxAmount.toFixed(2)),
           totalAmount,
           totalPaid,
@@ -288,7 +295,7 @@ class SalesService {
         // B. Insert Sale Items Snapshot
         for (const it of processedItems) {
           const itemId = uuidv4()
-          await db.execute(`
+          await d.execute(`
             INSERT INTO sale_items (
               id, sale_id, product_id, product_name, product_sku, barcode,
               quantity, unit_price, cost_price, discount_amount, discount_pct,
@@ -315,13 +322,13 @@ class SalesService {
           ])
 
           // C. Deduct Stock & Insert Inventory Movement
-          await db.execute(
+          await d.execute(
             "UPDATE products SET current_stock = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?",
             [it.stockAfter, it.productId]
           )
 
           const invMovementId = uuidv4()
-          await db.execute(`
+          await d.execute(`
             INSERT INTO inventory_movements (
               id, product_id, type, quantity, stock_before, stock_after,
               reference_id, reference_type, reason, notes, user_id, created_at
@@ -345,7 +352,7 @@ class SalesService {
         // D. Insert Payment Records & Update Cash Drawer if Cash
         for (const p of input.payments) {
           const paymentId = uuidv4()
-          await db.execute(`
+          await d.execute(`
             INSERT INTO payments (
               id, sale_id, shift_id, register_id, user_id, customer_id,
               method, amount, reference, notes, created_at
@@ -357,7 +364,7 @@ class SalesService {
             paymentId,
             saleId,
             input.shiftId,
-            registerId,
+            registerId || null,
             user.id,
             input.customerId || null,
             p.method,
@@ -373,7 +380,7 @@ class SalesService {
               : p.amount
 
             const cashMovId = uuidv4()
-            await db.execute(`
+            await d.execute(`
               INSERT INTO cash_movements (
                 id, register_id, shift_id, user_id, amount,
                 type, direction, payment_method, reason, reference_id, reference_type, notes, created_at
@@ -396,14 +403,9 @@ class SalesService {
 
         // E. Remove Held Cart if resumed/attached
         if (input.heldCartId) {
-          await db.execute('DELETE FROM held_carts WHERE id = ?', [input.heldCartId])
+          await d.execute('DELETE FROM held_carts WHERE id = ?', [input.heldCartId])
         }
-
-        await db.execute('COMMIT')
-      } catch (txnError) {
-        await db.execute('ROLLBACK')
-        throw txnError
-      }
+      })
 
       // 10. Audit Logging
       await auditService.log({
@@ -458,6 +460,7 @@ class SalesService {
       subtotal: number
       discount_amount: number
       discount_pct: number
+      discount_type?: 'pct' | 'fixed'
       tax_amount: number
       total: number
       paid_amount: number
@@ -507,6 +510,7 @@ class SalesService {
       subtotal: Number(s.subtotal),
       discount_amount: Number(s.discount_amount),
       discount_pct: Number(s.discount_pct),
+      discount_type: s.discount_type || (Number(s.discount_pct) > 0 ? 'pct' : 'fixed'),
       tax_amount: Number(s.tax_amount),
       total: Number(s.total),
       paid_amount: Number(s.paid_amount),
@@ -601,6 +605,7 @@ class SalesService {
       subtotal: Number(s.subtotal),
       discount_amount: Number(s.discount_amount),
       discount_pct: Number(s.discount_pct),
+      discount_type: s.discount_type || (Number(s.discount_pct) > 0 ? 'pct' : 'fixed'),
       tax_amount: Number(s.tax_amount),
       total: Number(s.total),
       paid_amount: Number(s.paid_amount),

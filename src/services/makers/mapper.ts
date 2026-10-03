@@ -85,6 +85,29 @@ export function extractDatasheetUrl(descriptionHtml: string): string | null {
   return null
 }
 
+/** Validate if an image URL/path is usable and not empty or a dummy string */
+export function isValidImageUrl(url?: string | null): boolean {
+  if (!url || typeof url !== 'string') return false
+  const trimmed = url.trim()
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined' || trimmed === 'NaN' || trimmed === '[object Object]') {
+    return false
+  }
+  // Check for HTTP/HTTPS URL, asset protocol, data URL, or valid absolute file path
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('data:image/') ||
+    trimmed.startsWith('asset://')
+  ) {
+    return true
+  }
+  // Windows absolute path (e.g. C:\...) or Unix absolute path
+  if (/^[a-zA-Z]:[\\\/]/.test(trimmed) || trimmed.startsWith('/')) {
+    return true
+  }
+  return false
+}
+
 /**
  * Map raw WooCommerce product to clean MAKERS POS product
  */
@@ -103,8 +126,37 @@ export function mapMakersProduct(raw: MakersApiProduct): MakersMappedProduct {
     ? raw.tags.map(t => decodeHtmlEntities(t.name)).filter(Boolean)
     : []
 
-  const images = Array.isArray(raw.images) ? raw.images.map(img => img.src).filter(Boolean) : []
-  const imageUrl = images.length > 0 ? images[0] : null
+  // Extract all images from WooCommerce images array
+  const extractedImages: string[] = []
+
+  if (Array.isArray(raw.images)) {
+    for (const item of raw.images) {
+      const img = item as any
+      if (typeof img === 'string' && isValidImageUrl(img)) {
+        extractedImages.push(img.trim())
+      } else if (img && typeof img === 'object') {
+        const candidate = img.src || img.url || img.thumbnail || ''
+        if (isValidImageUrl(candidate)) {
+          extractedImages.push(String(candidate).trim())
+        }
+      }
+    }
+  }
+
+  // Also check single image field or featured_image if images array was empty
+  if (extractedImages.length === 0) {
+    const singleImg = (raw as any).image || (raw as any).featured_image
+    if (typeof singleImg === 'string' && isValidImageUrl(singleImg)) {
+      extractedImages.push(singleImg.trim())
+    } else if (singleImg && typeof singleImg === 'object') {
+      const candidate = singleImg.src || singleImg.url || singleImg.thumbnail || ''
+      if (isValidImageUrl(candidate)) {
+        extractedImages.push(String(candidate).trim())
+      }
+    }
+  }
+
+  const imageUrl = extractedImages.length > 0 ? extractedImages[0] : null
   const footprintPackage = extractFootprintPackage(cleanName, plainDesc)
   const datasheetUrl = extractDatasheetUrl(raw.description || '')
 
@@ -118,7 +170,7 @@ export function mapMakersProduct(raw: MakersApiProduct): MakersMappedProduct {
     isInStock: raw.is_in_stock ?? true,
     permalink: raw.permalink || '',
     imageUrl,
-    images,
+    images: extractedImages,
     categories,
     tags,
     shortDescription: plainShortDesc,

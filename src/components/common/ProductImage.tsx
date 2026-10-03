@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Package, Cpu } from 'lucide-react'
+import { convertFileSrc } from '@tauri-apps/api/core'
 
 interface ProductImageProps {
   src?: string | null
@@ -12,7 +13,7 @@ interface ProductImageProps {
 function resolveImageSrc(src?: string | null): string | null {
   if (!src) return null
   const trimmed = src.trim()
-  if (!trimmed) return null
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined' || trimmed === 'NaN') return null
 
   // If already http/https or data url or asset URL
   if (
@@ -24,20 +25,12 @@ function resolveImageSrc(src?: string | null): string | null {
     return trimmed
   }
 
-  // If running in Tauri and has local absolute file path
+  // If local absolute file path
   try {
-    if (typeof window !== 'undefined' && ('__TAURI__' in window || '__TAURI_INTERNALS__' in window)) {
-      // @tauri-apps/api/core convertFileSrc
-      const { convertFileSrc } = (window as any).__TAURI__?.core || {}
-      if (typeof convertFileSrc === 'function') {
-        return convertFileSrc(trimmed)
-      }
-    }
-  } catch (err) {
-    console.warn('Error converting file src:', err)
+    return convertFileSrc(trimmed)
+  } catch {
+    return trimmed
   }
-
-  return trimmed
 }
 
 export function ProductImage({
@@ -49,6 +42,10 @@ export function ProductImage({
 }: ProductImageProps) {
   const [hasError, setHasError] = useState(false)
   const resolvedSrc = resolveImageSrc(src)
+
+  useEffect(() => {
+    setHasError(false)
+  }, [src])
 
   if (!resolvedSrc || hasError) {
     return (
@@ -72,3 +69,4 @@ export function ProductImage({
     />
   )
 }
+

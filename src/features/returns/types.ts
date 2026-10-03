@@ -46,6 +46,7 @@ export interface Return {
   saleInvoiceNumber?: string
   customerId?: string | null
   customerName?: string | null
+  customerCode?: string | null
   customerPhone?: string | null
   userId: string
   userName?: string | null
@@ -121,6 +122,7 @@ export interface SaleReturnEligibility {
   status: string
   customerId?: string | null
   customerName?: string | null
+  customerCode?: string | null
   customerPhone?: string | null
   cashierId: string
   cashierName?: string | null
@@ -166,6 +168,7 @@ export interface ReturnReceiptData {
   cashierName: string
   registerName?: string
   customerName?: string
+  customerCode?: string
   customerPhone?: string
   items: ReturnReceiptItem[]
   subtotal: number

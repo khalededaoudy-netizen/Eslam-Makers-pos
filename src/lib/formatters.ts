@@ -7,24 +7,25 @@ export function formatCurrency(amount: number, symbol = 'ج.م', decimals = 2): 
   return `${amount.toFixed(decimals)} ${symbol}`
 }
 
-/** Format ISO date string */
+/** Format ISO date string using Western/English digits (DD/MM/YYYY) */
 export function formatDate(isoString: string, withTime = false): string {
   const date = new Date(isoString)
   if (isNaN(date.getTime())) return '—'
 
-  const datePart = date.toLocaleDateString('ar-EG', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  })
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const year = date.getFullYear()
+  const datePart = `${day}/${month}/${year}`
 
   if (!withTime) return datePart
 
-  const timePart = date.toLocaleTimeString('ar-EG', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  })
+  let hours = date.getHours()
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const ampm = hours >= 12 ? 'م' : 'ص'
+  hours = hours % 12
+  hours = hours ? hours : 12
+  const formattedHours = String(hours).padStart(2, '0')
+  const timePart = `${formattedHours}:${minutes} ${ampm}`
 
   return `${datePart} ${timePart}`
 }

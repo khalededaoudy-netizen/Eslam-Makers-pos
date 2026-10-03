@@ -10,6 +10,7 @@ import {
 import { useAuthStore, usePermission } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { authService } from '@/services/auth/authService'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 
 const navGroups = [
   {
@@ -84,12 +85,14 @@ export function Sidebar({ collapsed, onCollapse }: SidebarProps) {
   const { can, isAdmin } = usePermission()
 
   const isRTL = language === 'ar'
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false)
 
-  const handleLogout = async () => {
+  const executeLogout = async () => {
     if (token && user) {
       await authService.logout(token, user.id, user.fullName)
     }
     clearUser()
+    setIsLogoutConfirmOpen(false)
   }
 
   const isActive = (path: string) => {
@@ -126,8 +129,8 @@ export function Sidebar({ collapsed, onCollapse }: SidebarProps) {
         </div>
         {!collapsed && (
           <div className="animate-fade-in min-w-0">
-            <p className="font-bold text-sidebar-foreground text-sm leading-none">{t('app.name')}</p>
-            <p className="text-[10px] text-muted-foreground truncate mt-0.5 leading-none">
+            <p className="font-bold text-primary dark:text-white text-sm leading-none">{t('app.name')}</p>
+            <p className="text-[10px] text-primary/70 dark:text-white/60 truncate mt-1 leading-none font-medium">
               {isRTL ? 'مكونات إلكترونية' : 'Electronics Store'}
             </p>
           </div>
@@ -138,8 +141,8 @@ export function Sidebar({ collapsed, onCollapse }: SidebarProps) {
       <button
         onClick={() => onCollapse(!collapsed)}
         className="absolute -end-3 top-12 z-10 w-6 h-6 rounded-full bg-card border border-border
-                   flex items-center justify-center text-muted-foreground hover:text-foreground
-                   hover:bg-secondary transition-all shadow-md"
+                   flex items-center justify-center text-primary/80 dark:text-white/80 hover:text-primary dark:hover:text-white
+                   hover:bg-primary/10 dark:hover:bg-white/10 transition-all shadow-md cursor-pointer"
         title={collapsed ? 'Expand' : 'Collapse'}
       >
         <CollapseIcon className="w-3 h-3" />
@@ -154,7 +157,7 @@ export function Sidebar({ collapsed, onCollapse }: SidebarProps) {
           return (
             <div key={group.label} className="mb-1">
               {!collapsed && (
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 px-3 pt-3 pb-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-primary/60 dark:text-white/50 px-3 pt-3 pb-1.5">
                   {t(group.label)}
                 </p>
               )}
@@ -170,17 +173,23 @@ export function Sidebar({ collapsed, onCollapse }: SidebarProps) {
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-lg mb-0.5 text-sm
                                 transition-all duration-150 group relative
                                 ${active
-                                  ? 'bg-primary/15 text-primary font-medium'
-                                  : 'text-muted-foreground hover:bg-sidebar-hover hover:text-sidebar-foreground'
+                                  ? 'bg-primary/15 dark:bg-primary/25 text-primary dark:text-white font-bold shadow-xs'
+                                  : 'text-primary/85 dark:text-white/85 hover:text-primary dark:hover:text-white hover:bg-primary/10 dark:hover:bg-white/10 font-medium'
                                 }
                                 ${collapsed ? 'justify-center' : ''}`}
                   >
                     {/* Active indicator */}
                     {active && (
-                      <span className="absolute inset-y-1 start-0 w-0.5 bg-primary rounded-e-full" />
+                      <span className="absolute inset-y-1.5 start-0 w-1 bg-primary rounded-e-full shadow-sm" />
                     )}
 
-                    <Icon className={`w-4.5 h-4.5 flex-shrink-0 ${active ? 'text-primary' : ''}`} />
+                    <Icon
+                      className={`w-4.5 h-4.5 flex-shrink-0 transition-colors ${
+                        active
+                          ? 'text-primary dark:text-white'
+                          : 'text-primary/85 dark:text-white/85 group-hover:text-primary dark:group-hover:text-white'
+                      }`}
+                    />
 
                     {!collapsed && (
                       <span className="truncate animate-fade-in">{t(item.label)}</span>
@@ -188,8 +197,8 @@ export function Sidebar({ collapsed, onCollapse }: SidebarProps) {
 
                     {/* Tooltip for collapsed */}
                     {collapsed && (
-                      <div className="absolute start-full ms-2 px-2 py-1 bg-popover border border-border
-                                      rounded-md text-xs text-popover-foreground whitespace-nowrap
+                      <div className="absolute start-full ms-2 px-2.5 py-1 bg-popover border border-border
+                                      rounded-md text-xs font-medium text-popover-foreground whitespace-nowrap
                                       opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none
                                       shadow-lg z-50">
                         {t(item.label)}
@@ -207,18 +216,18 @@ export function Sidebar({ collapsed, onCollapse }: SidebarProps) {
       <div className={`border-t border-sidebar-border p-3 ${collapsed ? 'flex justify-center' : ''}`}>
         {!collapsed ? (
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0">
-              <User className="w-4 h-4 text-primary" />
+            <div className="w-8 h-8 rounded-full bg-primary/15 dark:bg-white/10 flex items-center justify-center flex-shrink-0">
+              <User className="w-4 h-4 text-primary dark:text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate text-sidebar-foreground">
+              <p className="text-sm font-semibold truncate text-primary dark:text-white">
                 {language === 'ar' ? (user?.fullNameAr ?? user?.fullName) : user?.fullName}
               </p>
-              <p className="text-xs text-muted-foreground capitalize">{user?.roleName}</p>
+              <p className="text-xs text-primary/70 dark:text-white/60 capitalize font-medium">{user?.roleName}</p>
             </div>
             <button
-              onClick={handleLogout}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+              onClick={() => setIsLogoutConfirmOpen(true)}
+              className="p-1.5 rounded-lg text-primary/70 dark:text-white/70 hover:text-destructive dark:hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
               title={t('auth.logout')}
             >
               <LogOut className="w-4 h-4" />
@@ -226,14 +235,26 @@ export function Sidebar({ collapsed, onCollapse }: SidebarProps) {
           </div>
         ) : (
           <button
-            onClick={handleLogout}
-            className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+            onClick={() => setIsLogoutConfirmOpen(true)}
+            className="p-2 rounded-lg text-primary/70 dark:text-white/70 hover:text-destructive dark:hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
             title={t('auth.logout')}
           >
             <LogOut className="w-4 h-4" />
           </button>
         )}
       </div>
+
+      {/* Logout Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={isLogoutConfirmOpen}
+        onClose={() => setIsLogoutConfirmOpen(false)}
+        onConfirm={executeLogout}
+        variant="warning"
+        title={t('auth.confirmLogout', 'تأكيد تسجيل الخروج')}
+        description={t('auth.confirmLogoutDesc', 'هل تريد بالتأكيد تسجيل الخروج من النظام؟')}
+        confirmText={t('auth.logout', 'تسجيل الخروج')}
+        cancelText={t('common.cancel', 'إلغاء')}
+      />
     </aside>
   )
 }

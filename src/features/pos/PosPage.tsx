@@ -51,13 +51,14 @@ import { ReceiptModal } from '@/features/sales/components/ReceiptModal'
 import { salesService } from '@/features/sales/salesService'
 import { ReceiptData, CreateSalePaymentInput } from '@/features/sales/types'
 import { formatCurrency } from '@/lib/formatters'
+import { openCashDrawerDirect } from '@/services/printer/directPrint'
 
 export function PosPage() {
   const { t, i18n } = useTranslation()
   const isArabic = i18n.language !== 'en'
   const { user } = useAuthStore()
   const { can, isAdmin } = usePermission()
-  const { taxEnabled, taxRate, currencySymbol } = useSettingsStore()
+  const { taxEnabled, taxRate, currencySymbol, autoOpenDrawer, defaultPrinter } = useSettingsStore()
 
   const cart = useCartStore()
 
@@ -65,7 +66,6 @@ export function PosPage() {
   const [categories, setCategories] = useState<CategoryItem[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [gridProducts, setGridProducts] = useState<PosProduct[]>([])
-  const [bestSellers, setBestSellers] = useState<PosProduct[]>([])
   const [loadingGrid, setLoadingGrid] = useState(false)
 
   const [searchQuery, setSearchQuery] = useState('')
@@ -76,6 +76,7 @@ export function PosPage() {
   const [heldCarts, setHeldCarts] = useState<HeldCart[]>([])
   const [isHeldModalOpen, setIsHeldModalOpen] = useState(false)
   const [stockNotice, setStockNotice] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'warning'; message: string } | null>(null)
   const [customerLookupOpen, setCustomerLookupOpen] = useState(false)
   const [lookupMode, setLookupMode] = useState<'checkout' | 'select'>('checkout')
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false)
@@ -83,7 +84,16 @@ export function PosPage() {
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
   const [resumeConfirmTarget, setResumeConfirmTarget] = useState<HeldCart | null>(null)
 
+  // Auto-dismiss feedback banner after 4s
+  useEffect(() => {
+    if (feedback) {
+      const timer = setTimeout(() => setFeedback(null), 4000)
+      return () => clearTimeout(timer)
+    }
+  }, [feedback])
+
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const isConfirmingSaleRef = useRef(false)
 
   // RBAC Permissions
   const canAccess = isAdmin || can('access', 'pos')
@@ -95,16 +105,6 @@ export function PosPage() {
     cart.setTaxConfig(taxEnabled, taxRate)
   }, [taxEnabled, taxRate])
 
-  // Load Best Sellers
-  const loadBestSellers = useCallback(async () => {
-    try {
-      const topItems = await posService.getBestSellers(10)
-      setBestSellers(topItems)
-    } catch (err) {
-      console.error('Failed to load best sellers for POS:', err)
-    }
-  }, [])
-
   // Check active shift & load held carts on mount
   const refreshShiftAndHeld = useCallback(async () => {
     try {
@@ -112,13 +112,12 @@ export function PosPage() {
       setShiftInfo(shift)
       const list = await posService.getHeldCarts()
       setHeldCarts(list)
-      await loadBestSellers()
     } catch (err) {
       console.error('POS initialization error:', err)
     } finally {
       setCheckingShift(false)
     }
-  }, [user?.id, loadBestSellers])
+  }, [user?.id])
 
   // Load Categories
   useEffect(() => {
@@ -140,6 +139,12 @@ export function PosPage() {
     try {
       if (query && query.trim().length >= 2) {
         const results = await posService.searchProducts(query.trim(), 40)
+        setGridProducts(results)
+      } else if (catId === 'most_requested') {
+        const results = await posService.getMostRequested(60)
+        setGridProducts(results)
+      } else if (catId === 'best_sellers') {
+        const results = await posService.getBestSellers(60)
         setGridProducts(results)
       } else {
         const results = await posService.getProductsByCategory(catId || undefined, 60)
@@ -268,7 +273,8 @@ export function PosPage() {
         cart.items,
         cart.discountAmount,
         cart.taxEnabled,
-        cart.taxRate
+        cart.taxRate,
+        cart.discountType
       )
 
       await posService.holdCart(
@@ -280,6 +286,8 @@ export function PosPage() {
           items: cart.items,
           subtotal: summary.subtotal,
           discountAmount: summary.cartDiscountAmount,
+          discountPct: summary.cartDiscountPct,
+          discountType: cart.discountType,
           taxAmount: summary.taxAmount,
           total: summary.total,
           notes: cart.notes,
@@ -289,9 +297,15 @@ export function PosPage() {
 
       cart.clearCart()
       await refreshShiftAndHeld()
-      alert(t('pos.cartHeldSuccess', 'تم تعليق الفاتورة وحفظها بنجاح'))
+      setFeedback({
+        type: 'success',
+        message: t('pos.cartHeldSuccess', 'تم تعليق الفاتورة وحفظها بنجاح'),
+      })
     } catch (err: any) {
-      alert(err.message || 'Error holding cart')
+      setFeedback({
+        type: 'error',
+        message: err?.message || (isArabic ? 'حدث خطأ أثناء تعليق الفاتورة' : 'Error holding cart'),
+      })
     }
   }
 
@@ -300,9 +314,15 @@ export function PosPage() {
     try {
       const res = await posService.resumeHeldCart(heldCart.id, user || undefined)
       cart.setItems(res.items)
+      const restoredDiscountPct = heldCart.discount_pct !== undefined
+        ? heldCart.discount_pct
+        : (heldCart.subtotal > 0 ? (heldCart.discount_amount / heldCart.subtotal) * 100 : 0)
+      const restoredDiscountType = heldCart.discount_type || (restoredDiscountPct > 0 ? 'pct' : 'fixed')
+
       cart.setCartDiscount(
-        heldCart.subtotal > 0 ? (heldCart.discount_amount / heldCart.subtotal) * 100 : 0,
-        heldCart.discount_amount
+        restoredDiscountPct,
+        heldCart.discount_amount,
+        restoredDiscountType
       )
       if (heldCart.customer_id && heldCart.customer_name) {
         cart.setCustomer({
@@ -322,7 +342,10 @@ export function PosPage() {
         setStockNotice(res.stockWarnings.join(' — '))
       }
     } catch (err: any) {
-      alert(err.message || 'Error resuming cart')
+      setFeedback({
+        type: 'error',
+        message: err?.message || (isArabic ? 'حدث خطأ أثناء استرجاع الفاتورة' : 'Error resuming cart'),
+      })
     }
   }
 
@@ -340,8 +363,15 @@ export function PosPage() {
     try {
       await posService.deleteHeldCart(heldCartId, user || undefined)
       await refreshShiftAndHeld()
+      setFeedback({
+        type: 'success',
+        message: isArabic ? 'تم حذف الفاتورة المعلقة بنجاح' : 'Held cart deleted successfully',
+      })
     } catch (err: any) {
-      alert(err.message || 'Error deleting held cart')
+      setFeedback({
+        type: 'error',
+        message: err?.message || (isArabic ? 'حدث خطأ أثناء حذف الفاتورة المعلقة' : 'Error deleting held cart'),
+      })
     }
   }
 
@@ -367,61 +397,107 @@ export function PosPage() {
 
   // Complete Sale & Checkout Handler
   const handleConfirmSale = async (payments: CreateSalePaymentInput[], notes?: string) => {
-    if (!user) {
-      throw new Error(t('rbac.noPermission', 'يجب تسجيل الدخول لإتمام عملية البيع'))
+    if (isConfirmingSaleRef.current) {
+      console.warn('[POS] Sale confirmation already in progress, ignoring duplicate call')
+      return
     }
+    isConfirmingSaleRef.current = true
 
-    if (!shiftInfo.isOpen || !shiftInfo.shiftId) {
-      throw new Error(t('pos.noShiftWarning', 'لا توجد وردية مفتوحة حالياً. يرجى فتح وردية لبدء تسجيل المبيعات.'))
-    }
-
-    const res = await salesService.createSale(
-      {
-        shiftId: shiftInfo.shiftId,
-        registerId: shiftInfo.registerId || undefined,
-        customerId: cart.customerId || undefined,
-        items: cart.items.map((it) => ({
-          productId: it.productId,
-          productName: it.productName || it.productNameAr,
-          productSku: it.sku,
-          barcode: it.barcode || undefined,
-          quantity: it.quantity,
-          unitPrice: it.unitPrice,
-          costPrice: it.costPrice,
-          discountPct: it.discountPct,
-          discountAmount: it.discountAmount,
-        })),
-        discountPct: cart.discountPct,
-        discountAmount: cart.discountAmount,
-        taxRate: cart.taxEnabled ? cart.taxRate : 0,
-        payments,
-        notes: notes || cart.notes || undefined,
-      },
-      {
-        id: user.id,
-        fullName: user.fullName,
-        role: user.roleName,
+    try {
+      if (!user) {
+        throw new Error(t('rbac.noPermission', 'يجب تسجيل الدخول لإتمام عملية البيع'))
       }
-    )
 
-    setActiveReceipt(res.receipt)
-    setReceiptModalOpen(true)
-    setCheckoutModalOpen(false)
-    cart.clearCart()
-    loadGridProducts(selectedCategory, searchQuery)
-    loadBestSellers()
+      if (!shiftInfo.isOpen || !shiftInfo.shiftId) {
+        throw new Error(t('pos.noShiftWarning', 'لا توجد وردية مفتوحة حالياً. يرجى فتح وردية لبدء تسجيل المبيعات.'))
+      }
+
+      const res = await salesService.createSale(
+        {
+          shiftId: shiftInfo.shiftId,
+          registerId: shiftInfo.registerId || undefined,
+          customerId: cart.customerId || undefined,
+          items: cart.items.map((it) => ({
+            productId: it.productId,
+            productName: it.productName || it.productNameAr,
+            productSku: it.sku,
+            barcode: it.barcode || undefined,
+            quantity: it.quantity,
+            unitPrice: it.unitPrice,
+            costPrice: it.costPrice,
+            discountPct: it.discountPct,
+            discountAmount: it.discountAmount,
+          })),
+          discountPct: cart.discountPct,
+          discountAmount: cart.discountAmount,
+          discountType: cart.discountType,
+          taxRate: cart.taxEnabled ? cart.taxRate : 0,
+          payments,
+          notes: notes || cart.notes || undefined,
+        },
+        {
+          id: user.id,
+          fullName: user.fullName,
+          role: user.roleName,
+        }
+      )
+
+      // Auto-open cash drawer if sale contains cash and autoOpenDrawer setting is enabled
+      const hasCash = payments.some((p) => p.method === 'cash')
+      if (hasCash && autoOpenDrawer) {
+        openCashDrawerDirect(defaultPrinter).catch((err) => {
+          console.warn('[POS] Auto cash drawer open warning:', err)
+        })
+      }
+
+      setActiveReceipt(res.receipt)
+      setReceiptModalOpen(true)
+      setCheckoutModalOpen(false)
+      cart.clearCart()
+      loadGridProducts(selectedCategory, searchQuery)
+    } finally {
+      isConfirmingSaleRef.current = false
+    }
   }
 
   const totals = posService.calculateTotals(
     cart.items,
     cart.discountAmount,
     cart.taxEnabled,
-    cart.taxRate
+    cart.taxRate,
+    cart.discountType
   )
 
   return (
     <div className="flex-1 flex flex-col h-full bg-background overflow-hidden select-none">
       {/* Top Notification Alerts */}
+      {feedback && (
+        <div
+          className={`border-b px-6 py-2 text-xs font-semibold flex items-center justify-between shrink-0 animate-fade-in ${
+            feedback.type === 'success'
+              ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+              : feedback.type === 'warning'
+              ? 'bg-amber-500/15 border-amber-500/30 text-amber-600 dark:text-amber-400'
+              : 'bg-destructive/15 border-destructive/30 text-destructive'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {feedback.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+            )}
+            <span>{feedback.message}</span>
+          </div>
+          <button
+            onClick={() => setFeedback(null)}
+            className="p-0.5 hover:bg-black/10 dark:hover:bg-white/10 rounded transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {stockNotice && (
         <div className="bg-amber-500/15 border-b border-amber-500/30 px-6 py-2 text-amber-600 dark:text-amber-400 text-xs font-semibold flex items-center justify-between shrink-0 animate-fade-in">
           <div className="flex items-center gap-2">
@@ -443,98 +519,187 @@ export function PosPage() {
 
       {/* Main Responsive Grid Layout (Products Grid + Cart) */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
-        {/* Left Column: Category Bar + Product Search + Interactive Product Grid (7 cols) */}
-        <div className="lg:col-span-7 flex flex-col border-e border-border overflow-hidden bg-card/20">
-          {/* Top Search & Barcode Scan Bar */}
-          <div className="p-4 border-b border-border bg-card/60 flex items-center gap-3 shrink-0">
-            {/* Search Input */}
-            <div className="relative flex-1">
-              <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('pos.searchProducts', 'بحث عن صنف بالاسم، الكود، الباركود (F2)...')}
-                className="w-full h-11 ps-9 pe-16 rounded-xl bg-input border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <div className="absolute end-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="p-1 text-muted-foreground hover:text-foreground rounded"
-                    title="Clear (Esc)"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-                <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono font-bold text-muted-foreground bg-muted border border-border rounded shadow-xs select-none">
-                  F2
-                </kbd>
+        {/* Products & Categories Section (7 cols in desktop grid) */}
+        <div className="lg:col-span-7 flex flex-row border-e border-border overflow-hidden bg-card/20">
+          {/* 1. Vertical Categories Sidebar (Anchored on the RIGHT in RTL) */}
+          <div className="w-40 sm:w-44 lg:w-48 xl:w-52 shrink-0 border-e border-border bg-card/50 flex flex-col overflow-hidden">
+            {/* Sidebar Header */}
+            <div className="p-3 border-b border-border bg-muted/40 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                <Layers className="w-3.5 h-3.5 text-primary" />
+                <span>{isArabic ? 'التصنيفات' : 'Categories'}</span>
               </div>
+              <span className="text-[10px] font-mono font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
+                {categories.length + 3}
+              </span>
             </div>
 
-            {/* Barcode Scanner Auto-Add Input */}
-            <div className="w-48 shrink-0">
-              <BarcodeInput onProductFound={handleAddProduct} />
-            </div>
-
-            {/* Held Carts Badge */}
-            {canHold && (
+            {/* Scrollable Categories List */}
+            <div className="flex-1 p-2 space-y-1.5 overflow-y-auto scrollbar-thin">
+              {/* All Items Button */}
               <button
                 type="button"
-                onClick={() => setIsHeldModalOpen(true)}
-                className="relative h-11 px-3.5 rounded-xl border border-border bg-muted hover:bg-muted/80 text-foreground flex items-center gap-1.5 text-xs font-semibold shrink-0 transition-colors"
-                title={t('pos.heldCarts', 'الفواتير المعلقة')}
+                onClick={() => setSelectedCategory('')}
+                className={`w-full p-2.5 rounded-xl text-xs font-bold text-start flex items-center gap-2.5 transition-all ${
+                  selectedCategory === ''
+                    ? 'bg-primary text-primary-foreground shadow-sm ring-1 ring-primary'
+                    : 'bg-card border border-border/80 text-foreground hover:bg-muted/80 hover:border-border'
+                }`}
               >
-                <FolderOpen className="w-4 h-4 text-primary" />
-                <span className="hidden sm:inline">{isArabic ? 'المعلقة' : 'Held'}</span>
-                {heldCarts.length > 0 && (
-                  <span className="absolute -top-1.5 -end-1.5 w-5 h-5 bg-primary text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm">
-                    {heldCarts.length}
-                  </span>
-                )}
-              </button>
-            )}
-          </div>
-
-          {/* Horizontal Category Navigation Bar */}
-          <div className="px-4 py-2.5 border-b border-border bg-muted/20 flex items-center gap-2 overflow-x-auto shrink-0 scrollbar-none">
-            {/* All Products Tab */}
-            <button
-              type="button"
-              onClick={() => setSelectedCategory('')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all ${
-                selectedCategory === ''
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'bg-card border border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted'
-              }`}
-            >
-              {isArabic ? 'جميع الأصناف' : 'All Items'}
-            </button>
-
-            {categories.map((cat) => {
-              const isSelected = selectedCategory === cat.id
-              return (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => setSelectedCategory(cat.id)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs shrink-0 transition-all font-semibold ${
-                    isSelected
-                      ? 'bg-primary text-primary-foreground font-bold shadow-sm'
-                      : 'bg-card border border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted'
+                <div
+                  className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                    selectedCategory === ''
+                      ? 'bg-primary-foreground/20 text-primary-foreground'
+                      : 'bg-muted text-muted-foreground'
                   }`}
                 >
-                  {isArabic ? cat.name_ar : cat.name_en || cat.name_ar}
-                </button>
-              )
-            })}
+                  <Grid className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="truncate">{isArabic ? 'كل الأصناف' : 'All Items'}</div>
+                </div>
+              </button>
+
+              {/* Most Requested (الأكثر طلباً) */}
+              <button
+                type="button"
+                onClick={() => setSelectedCategory('most_requested')}
+                className={`w-full p-2.5 rounded-xl text-xs font-semibold text-start flex items-center gap-2.5 transition-all ${
+                  selectedCategory === 'most_requested'
+                    ? 'bg-primary text-primary-foreground font-bold shadow-sm ring-1 ring-primary'
+                    : 'bg-card border border-border/80 text-foreground hover:bg-muted/80 hover:border-border'
+                }`}
+              >
+                <div
+                  className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                    selectedCategory === 'most_requested'
+                      ? 'bg-primary-foreground/20 text-primary-foreground'
+                      : 'bg-muted text-amber-500'
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="truncate">{isArabic ? 'الأكثر طلباً' : 'Most Requested'}</div>
+                </div>
+              </button>
+
+              {/* Best Selling (الأكثر مبيعاً) */}
+              <button
+                type="button"
+                onClick={() => setSelectedCategory('best_sellers')}
+                className={`w-full p-2.5 rounded-xl text-xs font-semibold text-start flex items-center gap-2.5 transition-all ${
+                  selectedCategory === 'best_sellers'
+                    ? 'bg-primary text-primary-foreground font-bold shadow-sm ring-1 ring-primary'
+                    : 'bg-card border border-border/80 text-foreground hover:bg-muted/80 hover:border-border'
+                }`}
+              >
+                <div
+                  className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                    selectedCategory === 'best_sellers'
+                      ? 'bg-primary-foreground/20 text-primary-foreground'
+                      : 'bg-muted text-emerald-500'
+                  }`}
+                >
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="truncate">{isArabic ? 'الأكثر مبيعاً' : 'Best Selling'}</div>
+                </div>
+              </button>
+
+              {/* Product Categories */}
+              {categories.map((cat) => {
+                const isSelected = selectedCategory === cat.id
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat.id)}
+                    className={`w-full p-2.5 rounded-xl text-xs font-semibold text-start flex items-center gap-2.5 transition-all ${
+                      isSelected
+                        ? 'bg-primary text-primary-foreground font-bold shadow-sm ring-1 ring-primary'
+                        : 'bg-card border border-border/80 text-foreground hover:bg-muted/80 hover:border-border'
+                    }`}
+                  >
+                    <div
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                        isSelected
+                          ? 'bg-primary-foreground/20 text-primary-foreground'
+                          : 'bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      <Tag className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate">
+                        {isArabic ? cat.name_ar : cat.name_en || cat.name_ar}
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
-          {/* Products Grid Area */}
-          <div className="flex-1 p-4 overflow-y-auto">
+          {/* 2. Main Products Content (Search + Product Grid) */}
+          <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+            {/* Top Search & Barcode Scan Bar */}
+            <div className="p-3.5 border-b border-border bg-card/60 flex items-center gap-3 shrink-0">
+              {/* Search Input */}
+              <div className="relative flex-1">
+                <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={t('pos.searchProducts', 'بحث عن صنف بالاسم، الكود، الباركود (F2)...')}
+                  className="w-full h-10 ps-9 pe-16 rounded-xl bg-input border border-border text-xs sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <div className="absolute end-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="p-1 text-muted-foreground hover:text-foreground rounded"
+                      title="Clear (Esc)"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono font-bold text-muted-foreground bg-muted border border-border rounded shadow-xs select-none">
+                    F2
+                  </kbd>
+                </div>
+              </div>
+
+              {/* Barcode Scanner Auto-Add Input */}
+              <div className="w-40 sm:w-44 shrink-0">
+                <BarcodeInput onProductFound={handleAddProduct} />
+              </div>
+
+              {/* Held Carts Badge */}
+              {canHold && (
+                <button
+                  type="button"
+                  onClick={() => setIsHeldModalOpen(true)}
+                  className="relative h-10 px-3 rounded-xl border border-border bg-muted hover:bg-muted/80 text-foreground flex items-center gap-1.5 text-xs font-semibold shrink-0 transition-colors"
+                  title={t('pos.heldCarts', 'الفواتير المعلقة')}
+                >
+                  <FolderOpen className="w-4 h-4 text-primary" />
+                  <span className="hidden xl:inline">{isArabic ? 'المعلقة' : 'Held'}</span>
+                  {heldCarts.length > 0 && (
+                    <span className="absolute -top-1.5 -end-1.5 w-5 h-5 bg-primary text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm">
+                      {heldCarts.length}
+                    </span>
+                  )}
+                </button>
+              )}
+            </div>
+
+            {/* Products Grid Area */}
+            <div className="flex-1 p-3 sm:p-4 overflow-y-auto">
             {loadingGrid ? (
               <div className="flex items-center justify-center h-64 text-muted-foreground">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -545,7 +710,7 @@ export function PosPage() {
                 <p className="text-sm font-semibold">{isArabic ? 'لا توجد منتجات في هذا التصنيف' : 'No products found'}</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2.5 sm:gap-3">
                 {gridProducts.map((product) => {
                   const minStock = product.min_stock ?? 0
                   const isOutOfStock = product.current_stock <= 0
@@ -617,55 +782,7 @@ export function PosPage() {
               </div>
             )}
           </div>
-
-          {/* Best Sellers Panel at bottom of products column */}
-          {bestSellers.length > 0 && (
-            <div className="p-3 border-t border-border bg-card/60 shrink-0">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
-                  <TrendingUp className="w-3.5 h-3.5 text-amber-500" />
-                  <span>{isArabic ? 'الأكثر طلباً ومبيعاً' : 'Best Sellers'}</span>
-                </div>
-                <span className="text-[10px] text-muted-foreground">
-                  {isArabic ? 'إضافة سريعة للسلة' : '1-click quick add'}
-                </span>
-              </div>
-
-              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
-                {bestSellers.map((prod) => (
-                  <button
-                    key={prod.id}
-                    type="button"
-                    disabled={prod.current_stock <= 0}
-                    onClick={() => handleAddProduct(prod)}
-                    className="flex-shrink-0 w-44 p-2 rounded-xl bg-card border border-border/80 hover:border-primary/50 hover:shadow-sm flex items-center gap-2 text-start transition-all disabled:opacity-40"
-                  >
-                    <div className="w-10 h-10 rounded-lg bg-muted/60 border border-border flex items-center justify-center shrink-0 overflow-hidden p-0.5">
-                      <ProductImage
-                        src={prod.image_path}
-                        alt={prod.name_en || prod.name_ar}
-                        fallbackType="cpu"
-                        iconClassName="w-5 h-5 text-muted-foreground/30"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h5 className="text-[11px] font-bold text-foreground truncate leading-tight">
-                        {isArabic ? prod.name_ar : prod.name_en || prod.name_ar}
-                      </h5>
-                      <div className="flex items-center justify-between mt-0.5">
-                        <span className="text-[11px] font-mono font-bold text-primary">
-                          {formatCurrency(prod.selling_price, currencySymbol)}
-                        </span>
-                        <span className="text-[9px] font-mono text-muted-foreground">
-                          {prod.current_stock}
-                        </span>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          </div>
         </div>
 
         {/* Right Column: Active Cart, Customer Selector, Payment & Checkout (5 cols) */}
@@ -702,10 +819,8 @@ export function PosPage() {
               canDiscount={canDiscount}
               canHold={canHold}
               heldCartsCount={heldCarts.length}
-              onSetDiscount={(pct, amt) => cart.setCartDiscount(pct, amt)}
-              onHoldCart={handleHoldCart}
+              onSetDiscount={(pct, amt, type) => cart.setCartDiscount(pct, amt, type)}
               onOpenHeldCarts={() => setIsHeldModalOpen(true)}
-              onPrepareCheckout={handleOpenCheckout}
             />
 
             <div className="flex gap-2">

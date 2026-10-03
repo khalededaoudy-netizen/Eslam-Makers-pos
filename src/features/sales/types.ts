@@ -51,6 +51,7 @@ export interface Sale {
   subtotal: number
   discount_amount: number
   discount_pct: number
+  discount_type?: 'pct' | 'fixed'
   tax_amount: number
   total: number
   paid_amount: number
@@ -90,6 +91,7 @@ export interface CreateSaleInput {
   items: CreateSaleItemInput[]
   discountPct?: number
   discountAmount?: number
+  discountType?: 'pct' | 'fixed'
   taxRate?: number
   payments: CreateSalePaymentInput[]
   notes?: string

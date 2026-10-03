@@ -23,7 +23,12 @@ import {
   Info,
 } from 'lucide-react'
 import { getDb } from '@/services/db/database'
-import { searchMakersCatalog, importMakersProductDirect } from '@/services/makers/makersService'
+import {
+  searchMakersCatalog,
+  importMakersProductDirect,
+  backfillMissingProductImages,
+  BackfillProgress,
+} from '@/services/makers/makersService'
 import { MakersMappedProduct } from '@/services/makers/types'
 import { useAuthStore } from '@/stores/authStore'
 import { formatCurrency } from '@/lib/formatters'
@@ -81,6 +86,29 @@ export function MakersImportModal({
     currentName: '',
   })
   const [importReport, setImportReport] = useState<ImportReport | null>(null)
+
+  // Backfill Missing Images State
+  const [isBackfilling, setIsBackfilling] = useState(false)
+  const [backfillProgress, setBackfillProgress] = useState<BackfillProgress | null>(null)
+  const [backfillResult, setBackfillResult] = useState<{ updated: number; skipped: number; failed: number } | null>(null)
+
+  const handleBackfillImages = async () => {
+    setIsBackfilling(true)
+    setBackfillResult(null)
+    try {
+      const db = getDb()
+      const stats = await backfillMissingProductImages(db, (p) => {
+        setBackfillProgress(p)
+      })
+      setBackfillResult(stats)
+      await checkStatusForResults(results)
+      onImportComplete()
+    } catch (err) {
+      console.error('Backfill error:', err)
+    } finally {
+      setIsBackfilling(false)
+    }
+  }
 
   // Bulk edit overrides
   const [bulkSellingPrice, setBulkSellingPrice] = useState<string>('')
@@ -334,14 +362,66 @@ export function MakersImportModal({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 text-muted-foreground hover:text-foreground rounded-xl hover:bg-muted transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={isBackfilling || isImporting}
+              onClick={handleBackfillImages}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-colors disabled:opacity-50"
+              title={isArabic ? 'البحث عن صور المنتجات المستوردة مسبقاً وتحديثها بدون تعديل الأسعار أو المخزون' : 'Sync and download missing images for existing imported products'}
+            >
+              {isBackfilling ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5 text-primary" />
+              )}
+              <span>{isArabic ? 'مزامنة الصور المفقودة' : 'Sync Missing Images'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 text-muted-foreground hover:text-foreground rounded-xl hover:bg-muted transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
+
+        {/* Backfill Progress / Result Banner */}
+        {isBackfilling && backfillProgress && (
+          <div className="px-6 py-2.5 bg-primary/10 border-b border-primary/20 flex items-center justify-between text-xs text-primary font-medium animate-fade-in shrink-0">
+            <div className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+              <span>
+                {isArabic
+                  ? `جاري مزامنة الصور: (${backfillProgress.current} من ${backfillProgress.total}) — ${backfillProgress.currentProductName}`
+                  : `Syncing images: (${backfillProgress.current}/${backfillProgress.total}) — ${backfillProgress.currentProductName}`}
+              </span>
+            </div>
+            <span className="font-mono font-bold">{Math.round((backfillProgress.current / backfillProgress.total) * 100)}%</span>
+          </div>
+        )}
+
+        {backfillResult && (
+          <div className="px-6 py-2 bg-emerald-500/10 border-b border-emerald-500/20 flex items-center justify-between text-xs text-emerald-600 dark:text-emerald-400 font-bold animate-fade-in shrink-0">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>
+                {isArabic
+                  ? `اكتملت مزامنة الصور: تم تحديث ${backfillResult.updated} منتج، تم تخطي ${backfillResult.skipped}`
+                  : `Sync complete: updated ${backfillResult.updated} products, skipped ${backfillResult.skipped}`}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setBackfillResult(null)}
+              className="text-muted-foreground hover:text-foreground p-1"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Search Toolbar */}
         <div className="p-4 border-b border-border bg-card/60 shrink-0">

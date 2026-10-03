@@ -46,6 +46,7 @@ export interface PosCartSummary {
   subtotal: number
   cartDiscountPct: number
   cartDiscountAmount: number
+  cartDiscountType?: 'pct' | 'fixed'
   taxableAmount: number
   taxRate: number
   taxAmount: number
@@ -61,6 +62,8 @@ export interface HeldCart {
   cart_data: string
   subtotal: number
   discount_amount: number
+  discount_pct?: number
+  discount_type?: 'pct' | 'fixed'
   tax_amount: number
   total: number
   notes: string | null
@@ -77,6 +80,8 @@ export interface CreateHeldCartInput {
   items: PosCartItem[]
   subtotal: number
   discountAmount: number
+  discountPct?: number
+  discountType?: 'pct' | 'fixed'
   taxAmount: number
   total: number
   notes?: string | null
