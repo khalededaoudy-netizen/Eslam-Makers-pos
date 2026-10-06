@@ -53,6 +53,11 @@ export const DEFAULT_SETTINGS: Record<string, { value: string; category: string;
   barcode_format: { value: 'CODE128', category: 'barcode', description: 'Barcode Symbology Format' },
   auto_open_drawer: { value: '1', category: 'hardware', description: 'Open Cash Drawer on Sale' },
   allow_negative_stock: { value: '0', category: 'inventory', description: 'Allow Selling Out of Stock Items' },
+  auto_backup_enabled: { value: '1', category: 'backup', description: 'Enable Automatic Daily Backups (1/0)' },
+  last_auto_backup_at: { value: '', category: 'backup', description: 'Timestamp of last automatic backup' },
+  secondary_backup_path: { value: '', category: 'backup', description: 'Secondary backup directory (e.g. Google Drive / OneDrive / USB)' },
+  secondary_backup_enabled: { value: '0', category: 'backup', description: 'Enable secondary location backup (1/0)' },
+  backup_retention_count: { value: '30', category: 'backup', description: 'Number of local backups to retain' },
 }
 
 class SettingsService {
@@ -162,6 +167,32 @@ class SettingsService {
       [key]
     )
     return rows.length > 0 ? rows[0].value : defaultValue
+  }
+
+  /**
+   * Shorthand getter for settings
+   */
+  async get(key: string, defaultValue = ''): Promise<string> {
+    return this.getSetting(key, defaultValue)
+  }
+
+  /**
+   * System-level setter without requiring interactive actor (used by background jobs)
+   */
+  async set(key: string, value: string): Promise<void> {
+    const db = getDb()
+    const itemCategory = DEFAULT_SETTINGS[key]?.category ?? 'backup'
+    const itemDesc = DEFAULT_SETTINGS[key]?.description ?? ''
+
+    await db.execute(
+      `INSERT INTO settings (key, value, category, description, updated_at)
+       VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+       ON CONFLICT(key) DO UPDATE SET
+         value = excluded.value,
+         category = excluded.category,
+         updated_at = excluded.updated_at`,
+      [key, value, itemCategory, itemDesc]
+    )
   }
 
   /**

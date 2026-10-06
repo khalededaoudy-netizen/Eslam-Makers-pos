@@ -945,6 +945,16 @@ ALTER TABLE held_carts ADD COLUMN discount_type TEXT DEFAULT 'fixed'
 
 migrations.push({ version: 13, sql: MIGRATION_013 })
 
+// ─── Migration 014: Backup Optimization Indexes ─────────────────────────────
+
+const MIGRATION_014 = `
+CREATE INDEX IF NOT EXISTS backups_type_idx ON backups(type)
+---STATEMENT---
+CREATE INDEX IF NOT EXISTS backups_created_idx ON backups(created_at)
+`
+
+migrations.push({ version: 14, sql: MIGRATION_014 })
+
 
 // ─── Seed Data: Insert after initial migration ───────────────────────────────
 

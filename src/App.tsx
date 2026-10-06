@@ -9,6 +9,7 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { initDatabase, seedInitialData } from '@/services/db/database'
 import { authService } from '@/services/auth/authService'
 import { settingsService } from '@/services/settings/settingsService'
+import { autoBackupService } from '@/services/db/autoBackupService'
 import { Zap } from 'lucide-react'
 
 function AppBootstrap() {
@@ -53,6 +54,11 @@ function AppBootstrap() {
 
         // Clean expired sessions periodically
         await authService.cleanExpiredSessions()
+
+        // Start Auto Backup scheduler in background
+        autoBackupService.start().catch((err) => {
+          console.warn('[App] Failed to start auto backup service:', err)
+        })
       } catch (err) {
         console.error('App boot error:', err)
         clearUser()
@@ -62,6 +68,10 @@ function AppBootstrap() {
     }
 
     boot()
+
+    return () => {
+      autoBackupService.stop()
+    }
   }, [])
 
   if (isLoading) {

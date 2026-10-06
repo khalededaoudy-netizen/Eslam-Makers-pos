@@ -811,6 +811,121 @@ async fn open_external_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn get_backup_dir(app: tauri::AppHandle) -> Result<String, String> {
+    let base_dir: PathBuf = match app.path().app_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => {
+            if let Ok(appdata) = std::env::var("APPDATA") {
+                PathBuf::from(appdata).join("com.makers.pos")
+            } else {
+                std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join("data")
+            }
+        }
+    };
+
+    let backup_dir = base_dir.join("backups");
+    if let Err(e) = fs::create_dir_all(&backup_dir) {
+        return Err(format!("Failed to create backups directory: {}", e));
+    }
+
+    Ok(backup_dir.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn check_path_accessible(path: String) -> Result<bool, String> {
+    let target = PathBuf::from(path.trim());
+    if !target.exists() || !target.is_dir() {
+        return Ok(false);
+    }
+
+    let test_file = target.join(".pos_backup_check.tmp");
+    match fs::write(&test_file, b"check") {
+        Ok(_) => {
+            let _ = fs::remove_file(&test_file);
+            Ok(true)
+        }
+        Err(_) => Ok(false),
+    }
+}
+
+#[tauri::command]
+async fn copy_backup_to_secondary(
+    source_path: String,
+    secondary_dir: String,
+    filename: String,
+) -> Result<String, String> {
+    let source = PathBuf::from(source_path.trim());
+    if !source.exists() {
+        return Err(format!("Source backup file does not exist: {}", source.display()));
+    }
+
+    let target_dir = PathBuf::from(secondary_dir.trim());
+    if let Err(e) = fs::create_dir_all(&target_dir) {
+        return Err(format!("Failed to ensure target directory: {}", e));
+    }
+
+    let clean_filename = filename.replace(['\\', '/', ':', '*', '?', '"', '<', '>', '|'], "_");
+    let dest_path = target_dir.join(&clean_filename);
+
+    fs::copy(&source, &dest_path).map_err(|e| {
+        format!("Failed to copy backup to secondary location: {}", e)
+    })?;
+
+    Ok(dest_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn delete_backup_file(file_path: String) -> Result<bool, String> {
+    let path = PathBuf::from(file_path.trim());
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| format!("Failed to delete backup file: {}", e))?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+#[tauri::command]
+async fn append_app_log(
+    app: tauri::AppHandle,
+    level: String,
+    message: String,
+    date: String,
+) -> Result<(), String> {
+    let base_dir: PathBuf = match app.path().app_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => {
+            if let Ok(appdata) = std::env::var("APPDATA") {
+                PathBuf::from(appdata).join("com.makers.pos")
+            } else {
+                std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join("data")
+            }
+        }
+    };
+
+    let logs_dir = base_dir.join("logs");
+    if let Err(e) = fs::create_dir_all(&logs_dir) {
+        return Err(format!("Failed to create logs dir: {}", e));
+    }
+
+    let clean_date = date.replace(['\\', '/', ':', '*', '?', '"', '<', '>', '|'], "-");
+    let filename = format!("app_{}.log", clean_date);
+    let file_path = logs_dir.join(filename);
+
+    use std::io::Write;
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&file_path)
+        .map_err(|e| format!("Failed to open log file: {}", e))?;
+
+    writeln!(file, "[{}] {}", level.to_uppercase(), message)
+        .map_err(|e| format!("Failed to write log line: {}", e))?;
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -824,7 +939,12 @@ pub fn run() {
         print_receipt_raw,
         open_cash_drawer,
         execute_sql_transaction,
-        open_external_url
+        open_external_url,
+        get_backup_dir,
+        check_path_accessible,
+        copy_backup_to_secondary,
+        delete_backup_file,
+        append_app_log
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
@@ -838,4 +958,65 @@ pub fn run() {
     })
     .run(tauri::generate_context!())
     .expect("error while building tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_check_path_accessible_valid() {
+        tauri::async_runtime::block_on(async {
+            let temp_dir = std::env::temp_dir();
+            let accessible = check_path_accessible(temp_dir.to_string_lossy().to_string()).await.unwrap();
+            assert!(accessible, "Temp dir should be accessible");
+        });
+    }
+
+    #[test]
+    fn test_check_path_accessible_invalid() {
+        tauri::async_runtime::block_on(async {
+            let accessible = check_path_accessible("Z:\\invalid_path".to_string()).await.unwrap();
+            assert!(!accessible, "Z:\\invalid_path should NOT be accessible");
+        });
+    }
+
+    #[test]
+    fn test_copy_backup_to_secondary() {
+        tauri::async_runtime::block_on(async {
+            let base_temp = std::env::temp_dir().join("makers_backup_test_suite");
+            let _ = fs::create_dir_all(&base_temp);
+
+            let src_file = base_temp.join("auto_backup_test.db");
+            fs::write(&src_file, b"MOCK_SQLITE_BACKUP_DATA").unwrap();
+
+            let sec_dir = base_temp.join("secondary_dest");
+            let dest_path_str = copy_backup_to_secondary(
+                src_file.to_string_lossy().to_string(),
+                sec_dir.to_string_lossy().to_string(),
+                "auto_backup_2026-10-06.db".to_string(),
+            ).await.unwrap();
+
+            let dest_file = PathBuf::from(dest_path_str);
+            assert!(dest_file.exists(), "Destination backup file must exist");
+            let content = fs::read(&dest_file).unwrap();
+            assert_eq!(content, b"MOCK_SQLITE_BACKUP_DATA");
+
+            // Cleanup
+            let _ = fs::remove_dir_all(&base_temp);
+        });
+    }
+
+    #[test]
+    fn test_delete_backup_file() {
+        tauri::async_runtime::block_on(async {
+            let temp_file = std::env::temp_dir().join("test_deletable_file.db");
+            fs::write(&temp_file, b"data").unwrap();
+            assert!(temp_file.exists());
+
+            let deleted = delete_backup_file(temp_file.to_string_lossy().to_string()).await.unwrap();
+            assert!(deleted);
+            assert!(!temp_file.exists());
+        });
+    }
 }

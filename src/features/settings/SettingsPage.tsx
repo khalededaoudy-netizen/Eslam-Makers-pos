@@ -26,10 +26,19 @@ import {
   Code2,
   Cpu,
   Sparkles,
+  FolderOpen,
+  Cloud,
+  FileText,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react'
 import { useSettingsStore, Language, Theme, PaperWidth } from '@/stores/settingsStore'
 import { useAuthStore, usePermission } from '@/stores/authStore'
 import { backupService, BackupRecord } from '@/services/db/backupService'
+import { autoBackupService } from '@/services/db/autoBackupService'
+import { settingsService } from '@/services/settings/settingsService'
+import { logger } from '@/services/db/loggerService'
+import { invoke } from '@tauri-apps/api/core'
 import { openExternalUrl, DEVELOPER_LINKEDIN_URL } from '@/lib/openUrl'
 import { getAvailablePrinters, printTestReceiptDirect } from '@/services/printer/directPrint'
 
@@ -103,11 +112,34 @@ export function SettingsPage() {
   const [isRestoring, setIsRestoring] = useState(false)
   const [restoreConfirmModal, setRestoreConfirmModal] = useState<BackupRecord | null>(null)
 
+  // Auto Backup & Secondary Path State
+  const [autoBackupEnabled, setAutoBackupEnabled] = useState(true)
+  const [secondaryBackupPath, setSecondaryBackupPath] = useState('')
+  const [lastAutoBackupAt, setLastAutoBackupAt] = useState('')
+  const [localBackupDir, setLocalBackupDir] = useState('')
+  const [secondaryPathStatus, setSecondaryPathStatus] = useState<'idle' | 'testing' | 'valid' | 'invalid'>('idle')
+  const [secondaryStatusMsg, setSecondaryStatusMsg] = useState('')
+  const [isTestingSecondary, setIsTestingSecondary] = useState(false)
+  const [isSavingBackupConfig, setIsSavingBackupConfig] = useState(false)
+  const [isRunningAutoNow, setIsRunningAutoNow] = useState(false)
+
   const loadBackups = async () => {
     setLoadingBackups(true)
     try {
       const list = await backupService.listBackups()
       setBackupsList(list)
+
+      const enabledStr = await settingsService.get('auto_backup_enabled', '1')
+      setAutoBackupEnabled(enabledStr === '1' || enabledStr === 'true')
+
+      const secPath = await settingsService.get('secondary_backup_path', '')
+      setSecondaryBackupPath(secPath)
+
+      const lastAt = await settingsService.get('last_auto_backup_at', '')
+      setLastAutoBackupAt(lastAt)
+
+      const locDir = await backupService.getLocalBackupDir()
+      setLocalBackupDir(locDir)
     } catch (err) {
       console.error('Failed to load backups:', err)
     } finally {
@@ -137,6 +169,91 @@ export function SettingsPage() {
       setErrorMsg(err?.message || 'Failed to create backup')
     } finally {
       setIsBackingUp(false)
+    }
+  }
+
+  const handleTestSecondaryPath = async () => {
+    if (!secondaryBackupPath.trim()) {
+      setSecondaryPathStatus('invalid')
+      setSecondaryStatusMsg('يرجى إدخال مسار المجلد أولاً')
+      return
+    }
+    setIsTestingSecondary(true)
+    setSecondaryPathStatus('testing')
+    try {
+      const accessible = await invoke<boolean>('check_path_accessible', {
+        path: secondaryBackupPath.trim(),
+      })
+      if (accessible) {
+        setSecondaryPathStatus('valid')
+        setSecondaryStatusMsg('✅ المسار متاح')
+      } else {
+        setSecondaryPathStatus('invalid')
+        setSecondaryStatusMsg('❌ المسار غير متاح')
+      }
+    } catch (err: any) {
+      setSecondaryPathStatus('invalid')
+      setSecondaryStatusMsg('❌ المسار غير متاح')
+    } finally {
+      setIsTestingSecondary(false)
+    }
+  }
+
+  const handleSaveBackupConfig = async () => {
+    if (!canEdit) return
+    setIsSavingBackupConfig(true)
+    setErrorMsg('')
+    setSuccessMsg('')
+    try {
+      await settingsService.set('auto_backup_enabled', autoBackupEnabled ? '1' : '0')
+      await settingsService.set('secondary_backup_path', secondaryBackupPath.trim())
+      setSuccessMsg('تم حفظ إعدادات النسخ الاحتياطي التلقائي بنجاح')
+      setTimeout(() => setSuccessMsg(''), 4000)
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'فشل في حفظ إعدادات النسخ')
+    } finally {
+      setIsSavingBackupConfig(false)
+    }
+  }
+
+  const handleTriggerAutoBackupNow = async () => {
+    if (!canEdit) return
+    setIsRunningAutoNow(true)
+    setErrorMsg('')
+    setSuccessMsg('')
+    try {
+      const res = await autoBackupService.createBackup()
+      if (res.success) {
+        const msg = res.secondary
+          ? 'تم إنشاء النسخة محلياً وتم نسخها إلى المسار الثانوي بنجاح'
+          : 'تم إنشاء النسخة الاحتياطية محلياً بنجاح'
+        setSuccessMsg(msg)
+        setTimeout(() => setSuccessMsg(''), 5000)
+        await loadBackups()
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'فشل تشغيل النسخ التلقائي')
+    } finally {
+      setIsRunningAutoNow(false)
+    }
+  }
+
+  const handleExportDiagnostics = () => {
+    try {
+      const jsonStr = logger.exportLogsAsJson()
+      const blob = new Blob([jsonStr], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `makers_pos_diagnostics_${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      setSuccessMsg('تم تصدير سجلات التشخيص بنجاح')
+      setTimeout(() => setSuccessMsg(''), 4000)
+    } catch (err: any) {
+      setErrorMsg('تعذر تصدير السجلات')
     }
   }
 
@@ -939,10 +1056,169 @@ export function SettingsPage() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">{t('settings.retentionPolicy', 'سياسة الاحتفاظ')}</p>
-                    <p className="text-sm font-semibold">{t('settings.retentionDetails', 'آخر 7 نسخ (تدوير تلقائي)')}</p>
+                    <p className="text-sm font-semibold">آخر 30 نسخة (تدوير تلقائي)</p>
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Auto Backup & Secondary Location Configuration Card */}
+            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-primary/10 text-primary border border-primary/20">
+                    <Cloud className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-semibold text-foreground">
+                      إعدادات النسخ الاحتياطي التلقائي والمواقع
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      نسخ محلي إلزامي دائمًا + خيار نسخ ثانوي إلى (Google Drive / OneDrive / USB)
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleExportDiagnostics}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-muted hover:bg-muted/80 text-foreground border border-border text-xs font-medium transition-all"
+                    title="تصدير سجل التشخيص لتتبع أي أخطاء"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span>سجل التشخيص</span>
+                  </button>
+
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={handleTriggerAutoBackupNow}
+                      disabled={isRunningAutoNow}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600/10 hover:bg-blue-600/20 text-blue-500 border border-blue-500/30 text-xs font-semibold transition-all disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isRunningAutoNow ? 'animate-spin' : ''}`} />
+                      <span>{isRunningAutoNow ? 'جاري التنفيذ...' : 'تشغيل النسخ التلقائي الآن'}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Toggle Auto Backup */}
+              <div className="flex items-center justify-between p-4 rounded-xl bg-background border border-border">
+                <div className="space-y-0.5">
+                  <label htmlFor="autoBackupToggle" className="text-sm font-semibold text-foreground cursor-pointer">
+                    تفعيل النسخ التلقائي اليومي
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    يقوم النظام بأخذ نسخة احتياطية يومياً كل 24 ساعة في الخلفية تلقائياً
+                  </p>
+                </div>
+                <input
+                  id="autoBackupToggle"
+                  type="checkbox"
+                  disabled={!canEdit}
+                  checked={autoBackupEnabled}
+                  onChange={(e) => setAutoBackupEnabled(e.target.checked)}
+                  className="w-5 h-5 rounded text-primary focus:ring-primary border-border cursor-pointer disabled:opacity-50"
+                />
+              </div>
+
+              {/* 1. Mandatory Local Location */}
+              <div className="p-4 rounded-xl bg-background border border-border/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-foreground font-semibold text-xs">
+                    <HardDrive className="w-4 h-4 text-emerald-500" />
+                    <span>1. الموقع المحلي الأساسي (إجباري دائمًا)</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                    نشط دائمًا
+                  </span>
+                </div>
+                <p className="font-mono text-xs text-muted-foreground bg-muted/40 p-2 rounded-lg border border-border/50 break-all select-all">
+                  {localBackupDir || '%APPDATA%\\com.makers.pos\\backups\\'}
+                </p>
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1">
+                  <span>آخر نسخة: {lastAutoBackupAt ? new Date(lastAutoBackupAt).toLocaleString() : 'لم يتم بعد'}</span>
+                  <span>الحد الأقصى المحلي: 30 نسخة (يتم تدوير وحذف الأقدم تلقائياً)</span>
+                </div>
+              </div>
+
+              {/* 2. Optional Secondary Location */}
+              <div className="p-4 rounded-xl bg-background border border-border space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-foreground font-semibold text-xs">
+                    <Cloud className="w-4 h-4 text-primary" />
+                    <span>2. الموقع الثانوي (اختياري — Google Drive / OneDrive / USB)</span>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground">
+                    مزامنة بدون أي تعقيد أو مفاتيح API
+                  </span>
+                </div>
+
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  ضع مسار مجلد متزامن مع خدمة السحاب المفضلة لديك (مثل مجلد Google Drive أو OneDrive على جهازك) أو مسار فلاشة USB. سيقوم التطبيق بنسخ ملف النسخة الاحتياطية مباشرة إلى هذا المسار فور إتمامه.
+                </p>
+
+                <div className="flex gap-2 items-center flex-wrap sm:flex-nowrap">
+                  <div className="relative flex-1 w-full">
+                    <input
+                      type="text"
+                      disabled={!canEdit}
+                      value={secondaryBackupPath}
+                      onChange={(e) => {
+                        setSecondaryBackupPath(e.target.value)
+                        setSecondaryPathStatus('idle')
+                        setSecondaryStatusMsg('')
+                      }}
+                      placeholder="مثال: D:\Google Drive\POS Backups أو E:\Backups"
+                      className="w-full px-3.5 py-2 rounded-xl bg-card border border-border text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleTestSecondaryPath}
+                    disabled={isTestingSecondary || !secondaryBackupPath.trim()}
+                    className="px-3.5 py-2 rounded-xl bg-muted hover:bg-muted/80 text-foreground border border-border text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 disabled:opacity-50 transition-colors"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isTestingSecondary ? 'animate-spin' : ''}`} />
+                    <span>فحص المسار</span>
+                  </button>
+                </div>
+
+                {secondaryPathStatus !== 'idle' && (
+                  <div className={`text-xs flex items-center gap-1.5 p-2 rounded-lg border ${
+                    secondaryPathStatus === 'valid'
+                      ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+                      : secondaryPathStatus === 'invalid'
+                      ? 'bg-destructive/10 text-destructive border-destructive/20'
+                      : 'bg-muted text-muted-foreground border-border'
+                  }`}>
+                    {secondaryPathStatus === 'valid' ? (
+                      <CheckCircle className="w-4 h-4 shrink-0" />
+                    ) : secondaryPathStatus === 'invalid' ? (
+                      <XCircle className="w-4 h-4 shrink-0" />
+                    ) : null}
+                    <span>{secondaryStatusMsg}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Save Configuration Button */}
+              {canEdit && (
+                <div className="flex justify-end pt-2 border-t border-border/50">
+                  <button
+                    type="button"
+                    onClick={handleSaveBackupConfig}
+                    disabled={isSavingBackupConfig}
+                    className="flex items-center gap-2 px-5 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-all disabled:opacity-50"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>{isSavingBackupConfig ? 'جاري الحفظ...' : 'حفظ إعدادات النسخ الاحتياطي'}</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Backups List */}
