@@ -23,7 +23,7 @@ export function UsersPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('ALL')
-  const [statusFilter, setStatusFilter] = useState('ALL')
+  const [statusFilter, setStatusFilter] = useState('ACTIVE')
 
   // Notification / Feedback banner
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
@@ -475,9 +475,13 @@ export function UsersPage() {
             ? t('rbac.permissionDenied', 'ليس لديك الصلاحية لتنفيذ هذا الإجراء')
             : res.error || t('auth.errors.system_error', 'حدث خطأ في النظام')
         setDeleteError(msg)
+        setFeedback({ type: 'error', message: msg })
       }
     } catch (err: any) {
-      setDeleteError(err.message || t('auth.errors.system_error'))
+      const message = err.message || t('auth.errors.system_error')
+      console.error('[Delete User]', err)
+      setDeleteError(message)
+      setFeedback({ type: 'error', message })
     } finally {
       setIsDeleting(false)
     }
