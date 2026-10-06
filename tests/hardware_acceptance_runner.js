@@ -14,9 +14,9 @@ console.log('============================================================\n')
 
 // 1. Release Binary Integrity Check
 console.log('--- 1. RELEASE EXECUTABLE VERIFICATION ---')
-const exePath = path.join(process.cwd(), 'MAKERS-POS-v1.0.0', 'MAKERS POS.exe')
+const exePath = path.join(process.cwd(), 'MAKERS POS.exe')
 if (!fs.existsSync(exePath)) {
-  console.error(`FATAL: Release binary not found at ${exePath}`)
+  console.error(`FATAL: Root test binary not found at ${exePath}`)
   process.exit(1)
 }
 

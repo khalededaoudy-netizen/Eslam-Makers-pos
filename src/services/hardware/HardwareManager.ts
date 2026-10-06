@@ -1,9 +1,13 @@
 /**
  * MAKERS POS — Hardware Abstraction Layer
- * All hardware interactions go through this service layer.
- * Real implementations are in Tauri Rust commands.
- * MockImplementation is used when hardware is unavailable.
+ * Unified hardware interactions routing to directPrint and Tauri native commands.
  */
+
+import {
+  getAvailablePrinters,
+  openCashDrawerDirect,
+  printReceiptDirect,
+} from '@/services/printer/directPrint'
 
 export interface PrinterConfig {
   port: string
@@ -55,58 +59,27 @@ export interface LabelConfig {
 
 class PrinterService {
   private config: PrinterConfig = { port: '', width: 80, encoding: 'cp864' }
-  private available = false
 
   configure(config: Partial<PrinterConfig>) {
     this.config = { ...this.config, ...config }
   }
 
-  async printReceipt(data: ReceiptData): Promise<boolean> {
+  async printReceipt(elementOrHtml?: HTMLElement | string | null): Promise<boolean> {
     try {
-      if (typeof window !== 'undefined' && '__TAURI__' in window) {
-        const { invoke } = await import('@tauri-apps/api/core')
-        await invoke('print_receipt', { data, config: this.config })
-        return true
-      }
-      // Mock: log to console in dev
-      console.log('[MockPrinter] Receipt:', data)
-      return true
+      const printer = this.config.port || 'Default'
+      const paperWidth = this.config.width === 58 ? '58mm' : '80mm'
+      const res = await printReceiptDirect(elementOrHtml ?? null, printer, paperWidth)
+      return res.success
     } catch (err) {
-      console.error('[PrinterService] Error:', err)
+      console.error('[PrinterService] Error printing receipt:', err)
       return false
     }
   }
 
-  async printTestReceipt(): Promise<boolean> {
-    return this.printReceipt({
-      storeName: 'MAKERS',
-      storeSubtitle: 'Electronics Components & Makers Store',
-      invoiceNumber: 'TEST-000001',
-      cashierName: 'Test Cashier',
-      date: new Date().toLocaleDateString('ar-EG'),
-      time: new Date().toLocaleTimeString('ar-EG'),
-      items: [
-        { name: 'Resistor 1KΩ 1/4W', qty: 10, unit: 'pcs', unitPrice: 0.75, subtotal: 7.50 },
-        { name: 'LED Red 5mm', qty: 5, unit: 'pcs', unitPrice: 1.5, subtotal: 7.50 },
-      ],
-      subtotal: 15,
-      discountAmount: 0,
-      total: 15,
-      payments: [{ method: 'cash', amount: 20 }],
-      paidAmount: 20,
-      changeAmount: 5,
-      footer: 'شكراً لتسوقكم مع MAKERS',
-    })
-  }
-
   async testConnection(): Promise<boolean> {
     try {
-      if (typeof window !== 'undefined' && '__TAURI__' in window) {
-        const { invoke } = await import('@tauri-apps/api/core')
-        return await invoke<boolean>('test_printer')
-      }
-      console.log('[MockPrinter] Test connection: OK')
-      return true
+      const printers = await getAvailablePrinters()
+      return printers.length > 0
     } catch {
       return false
     }
@@ -121,23 +94,18 @@ class PrinterService {
 // ─── Cash Drawer Service ─────────────────────────────────────────────────────
 
 class CashDrawerService {
-  async open(): Promise<boolean> {
+  async open(printerName?: string): Promise<boolean> {
     try {
-      if (typeof window !== 'undefined' && '__TAURI__' in window) {
-        const { invoke } = await import('@tauri-apps/api/core')
-        await invoke('open_cash_drawer')
-        return true
-      }
-      console.log('[MockCashDrawer] Drawer opened')
-      return true
+      const res = await openCashDrawerDirect(printerName)
+      return res.success
     } catch (err) {
-      console.error('[CashDrawerService] Error:', err)
+      console.error('[CashDrawerService] Error kicking drawer:', err)
       return false
     }
   }
 
-  async test(): Promise<boolean> {
-    return this.open()
+  async test(printerName?: string): Promise<boolean> {
+    return this.open(printerName)
   }
 }
 
@@ -194,14 +162,13 @@ class LabelPrinterService {
     barcode: string
     price: number
     currencySymbol: string
-  }, config: LabelConfig): Promise<boolean> {
+  }, _config: LabelConfig): Promise<boolean> {
     try {
-      if (typeof window !== 'undefined' && '__TAURI__' in window) {
-        const { invoke } = await import('@tauri-apps/api/core')
-        await invoke('print_barcode_label', { data, config })
+      if (typeof window !== 'undefined') {
+        window.print()
         return true
       }
-      console.log('[MockLabelPrinter] Label:', data, config)
+      console.log('[MockLabelPrinter] Label:', data)
       return true
     } catch (err) {
       console.error('[LabelPrinterService] Error:', err)
