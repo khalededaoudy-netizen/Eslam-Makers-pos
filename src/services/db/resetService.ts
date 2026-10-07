@@ -69,6 +69,7 @@ export async function getOperationalDataCounts(): Promise<Record<string, number>
 export async function resetOperationalData(options: {
   keepAuditLogs?: boolean
   userId: string
+  importMakersCategories?: boolean
 }): Promise<{ success: boolean; deleted: Record<string, number> }> {
   // 1. Mandatory Pre-reset backup
   await backupService.createBackup({
@@ -112,13 +113,34 @@ export async function resetOperationalData(options: {
     }
   })
 
+  // 2. If importMakersCategories is true, auto-seed the 35 master categories
+  if (options.importMakersCategories) {
+    try {
+      const { makersCategoryService } = await import('../categories/makersCategoryService')
+      await makersCategoryService.importMakersCategories(undefined, {
+        id: options.userId,
+      })
+      console.log('[resetService] Auto-imported 35 MAKERS categories after reset.')
+    } catch (catErr) {
+      console.warn('[resetService] Failed to auto-import MAKERS categories:', catErr)
+    }
+  }
+
+  // 3. Ensure default cash register exists after operational reset
+  try {
+    const { cashRegisterService } = await import('@/features/cash-register/cashRegisterService')
+    await cashRegisterService.ensureDefaultRegister()
+  } catch (regErr) {
+    console.warn('[resetService] Failed to ensure default cash register after reset:', regErr)
+  }
+
   // Log to audit service
   try {
     await auditService.log({
       action: 'reset_all_data',
       resource: 'system',
       userId: options.userId,
-      details: { deleted },
+      details: { deleted, importMakersCategories: !!options.importMakersCategories },
     })
   } catch (auditErr) {
     console.warn('[resetService] Audit log warning:', auditErr)

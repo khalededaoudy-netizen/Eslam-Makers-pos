@@ -159,6 +159,7 @@ export function SettingsPage() {
   const [resetModalOpen, setResetModalOpen] = useState(false)
   const [resetConfirmationInput, setResetConfirmationInput] = useState('')
   const [keepAuditLogsSetting, setKeepAuditLogsSetting] = useState(true)
+  const [importMakersCategoriesSetting, setImportMakersCategoriesSetting] = useState(true)
   const [isResetting, setIsResetting] = useState(false)
   const [operationalCounts, setOperationalCounts] = useState<Record<string, number>>({})
   const [loadingCounts, setLoadingCounts] = useState(false)
@@ -193,6 +194,7 @@ export function SettingsPage() {
       const res = await resetOperationalData({
         userId: user?.id || 'admin',
         keepAuditLogs: keepAuditLogsSetting,
+        importMakersCategories: importMakersCategoriesSetting,
       })
       if (res.success) {
         setSuccessMsg(t('settings.resetSuccess', 'تمت إعادة ضبط جميع البيانات التشغيلية بنجاح وتم إنشاء نسخة احتياطية إجبارية!'))
@@ -1585,19 +1587,42 @@ export function SettingsPage() {
                     />
                   </div>
 
-                  <label className="flex items-center gap-2.5 text-xs text-foreground cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={keepAuditLogsSetting}
-                      onChange={(e) => setKeepAuditLogsSetting(e.target.checked)}
-                      className="rounded border-border text-primary focus:ring-primary w-4 h-4"
-                    />
-                    <span>
-                      {settings.language === 'ar'
-                        ? 'الاحتفاظ بآخر 100 عملية في سجل المراقبة (Audit Logs)'
-                        : 'Keep last 100 entries in Audit Logs'}
-                    </span>
-                  </label>
+                  <div className="space-y-3 pt-1">
+                    <label className="flex items-start gap-2.5 text-xs text-foreground cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={importMakersCategoriesSetting}
+                        onChange={(e) => setImportMakersCategoriesSetting(e.target.checked)}
+                        className="rounded border-border text-primary focus:ring-primary w-4 h-4 mt-0.5"
+                      />
+                      <div className="flex flex-col">
+                        <span className="font-semibold">
+                          {settings.language === 'ar'
+                            ? 'إعادة استيراد تصنيفات MAKERS الأساسية بعد المسح'
+                            : 'Re-import official MAKERS categories after reset'}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {settings.language === 'ar'
+                            ? '(مُوصى به — 35 تصنيف جاهز)'
+                            : '(Recommended — 35 ready-to-use categories)'}
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-center gap-2.5 text-xs text-foreground cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={keepAuditLogsSetting}
+                        onChange={(e) => setKeepAuditLogsSetting(e.target.checked)}
+                        className="rounded border-border text-primary focus:ring-primary w-4 h-4"
+                      />
+                      <span>
+                        {settings.language === 'ar'
+                          ? 'الاحتفاظ بآخر 100 عملية في سجل المراقبة (Audit Logs)'
+                          : 'Keep last 100 entries in Audit Logs'}
+                      </span>
+                    </label>
+                  </div>
 
                   <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
                     <button

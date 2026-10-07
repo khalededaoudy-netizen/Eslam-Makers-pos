@@ -22,7 +22,7 @@ import {
   ImportPreviewResult,
   ImportExecutionResult,
 } from '@/services/categories/makersCategoryService'
-import { MAKERS_MASTER_CATEGORIES } from '@/services/categories/makersCategories'
+import { MAKERS_MASTER_CATEGORIES, normalizeCategoryName } from '@/services/categories/makersCategories'
 import { useAuthStore, usePermission } from '@/stores/authStore'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 
@@ -182,6 +182,41 @@ export function CategoriesPage() {
     return categories.reduce((sum, c) => sum + (c.product_count || 0), 0)
   }, [categories])
 
+  const importedMakersCount = useMemo(() => {
+    const masterNames = new Set(
+      MAKERS_MASTER_CATEGORIES.flatMap(m => [
+        normalizeCategoryName(m.name_en),
+        normalizeCategoryName(m.name_ar),
+      ])
+    )
+    return categories.filter(c =>
+      masterNames.has(normalizeCategoryName(c.name_en || '')) ||
+      masterNames.has(normalizeCategoryName(c.name_ar || ''))
+    ).length
+  }, [categories])
+
+  async function handleQuickImportAll() {
+    setIsExecutingImport(true)
+    setError('')
+    try {
+      const result = await makersCategoryService.importMakersCategories(undefined, {
+        id: user?.id,
+        fullName: user?.fullName,
+      })
+      setLastImportResult(result)
+      setFeedback(
+        isRtl
+          ? `تم اكتمال الاستيراد بنجاح: تم إضافة ${result.created} تصنيف جاهز من MAKERS!`
+          : `Import completed: successfully added ${result.created} MAKERS categories!`
+      )
+      await loadCategories()
+    } catch (err: any) {
+      setError(err?.message || (isRtl ? 'فشل استيراد تصنيفات ميكرز' : 'Failed to import categories'))
+    } finally {
+      setIsExecutingImport(false)
+    }
+  }
+
   return (
     <div className="flex-1 flex flex-col p-6 max-w-6xl mx-auto w-full space-y-6">
       {/* Header */}
@@ -217,6 +252,33 @@ export function CategoriesPage() {
         )}
       </div>
 
+      {/* Quick Start Banner when DB is Empty */}
+      {categories.length === 0 && (
+        <div className="p-6 rounded-2xl bg-gradient-to-r from-blue-500/10 via-primary/10 to-indigo-500/10 border-2 border-primary/30 shadow-md flex flex-col sm:flex-row items-center justify-between gap-5 animate-fade-in">
+          <div className="space-y-1.5 text-center sm:text-start">
+            <div className="flex items-center justify-center sm:justify-start gap-2 text-primary font-bold text-base">
+              <span className="text-xl">🎯</span>
+              <span>{isRtl ? 'ابدأ بسرعة' : 'Quick Start'}</span>
+            </div>
+            <p className="text-sm font-bold text-foreground">
+              {isRtl ? 'عندك 35 تصنيف جاهز من MAKERS' : 'You have 35 ready-made categories from MAKERS'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {isRtl ? 'اضغط الزر لإضافتها دفعة واحدة' : 'Click the button to import all of them in one click'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleQuickImportAll}
+            disabled={isExecutingImport || isAnalyzingImport}
+            className="px-5 py-3 rounded-xl bg-primary text-primary-foreground text-xs sm:text-sm font-bold shadow-lg hover:bg-primary/90 hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2 shrink-0 cursor-pointer disabled:opacity-50"
+          >
+            <DownloadCloud className={`w-4 h-4 ${isExecutingImport ? 'animate-bounce' : ''}`} />
+            <span>{isRtl ? 'استيراد الـ 35 تصنيف الآن' : 'Import All 35 Categories Now'}</span>
+          </button>
+        </div>
+      )}
+
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-card border border-border p-4 rounded-2xl shadow-xs flex items-center gap-3">
@@ -224,8 +286,15 @@ export function CategoriesPage() {
             <Layers className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xs text-muted-foreground font-medium">إجمالي التصنيفات</div>
+            <div className="text-xs text-muted-foreground font-medium">
+              {isRtl ? 'إجمالي التصنيفات' : 'Total Categories'}
+            </div>
             <div className="text-xl font-bold text-foreground">{categories.length}</div>
+            <div className="text-[10px] text-muted-foreground">
+              {categories.length === 0
+                ? (isRtl ? 'لا توجد تصنيفات حالياً' : 'No categories yet')
+                : (isRtl ? 'موجودة في قاعدة البيانات' : 'In database')}
+            </div>
           </div>
         </div>
 
@@ -234,8 +303,19 @@ export function CategoriesPage() {
             <ShieldCheck className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xs text-muted-foreground font-medium">تصنيفات ميكرز الأساسية</div>
-            <div className="text-xl font-bold text-foreground">35 فئة رئيسية</div>
+            <div className="text-xs text-muted-foreground font-medium">
+              {isRtl ? 'قائمة MAKERS المرجعية: 35' : 'MAKERS Reference List: 35'}
+            </div>
+            <div className="text-xl font-bold text-foreground">
+              {categories.length === 0
+                ? '35'
+                : `35 (${importedMakersCount} ${isRtl ? 'مستورد' : 'imported'})`}
+            </div>
+            <div className="text-[10px] text-muted-foreground">
+              {categories.length === 0
+                ? (isRtl ? '(اضغط استيراد لإضافتها)' : '(Click import to add)')
+                : (isRtl ? 'تصنيفات متطابقة مع الكتالوج' : 'Matched catalog categories')}
+            </div>
           </div>
         </div>
 
@@ -244,8 +324,12 @@ export function CategoriesPage() {
             <Package className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xs text-muted-foreground font-medium">المنتجات المصنفة</div>
-            <div className="text-xl font-bold text-foreground">{totalProductsInCategories} منتج</div>
+            <div className="text-xs text-muted-foreground font-medium">
+              {isRtl ? 'المنتجات المصنفة' : 'Categorized Products'}
+            </div>
+            <div className="text-xl font-bold text-foreground">
+              {totalProductsInCategories} {isRtl ? 'منتج' : 'products'}
+            </div>
           </div>
         </div>
       </div>
