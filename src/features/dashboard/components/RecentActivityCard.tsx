@@ -1,5 +1,6 @@
 /**
- * MAKERS POS — Recent Activity Feed Component
+ * MAKERS POS — Enhanced Recent Activity Feed Component
+ * Displays 10 latest events: Sales, Customers added, and Inventory movements.
  */
 
 import React from 'react'
@@ -10,6 +11,9 @@ import {
   RotateCcw,
   TrendingDown,
   ShoppingBag,
+  UserPlus,
+  PackageCheck,
+  PackageMinus,
   Wallet,
 } from 'lucide-react'
 import { RecentActivityItem } from '../types'
@@ -20,15 +24,31 @@ interface RecentActivityCardProps {
 }
 
 export function RecentActivityCard({ activities }: RecentActivityCardProps) {
-  const { t, i18n } = useTranslation()
-  const isRtl = i18n.language === 'ar'
+  const { i18n } = useTranslation()
+  const isArabic = i18n.language !== 'en'
   const currencySymbol = useSettingsStore(s => s.currencySymbol) || 'EGP'
 
   const formatCurrency = (val: number) => {
-    return `${val.toLocaleString(isRtl ? 'ar-EG' : 'en-US', {
+    return `${val.toLocaleString(isArabic ? 'ar-EG' : 'en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })} ${currencySymbol}`
+  }
+
+  const formatRelativeTime = (isoString: string) => {
+    try {
+      const diffMs = Date.now() - new Date(isoString).getTime()
+      const diffMins = Math.floor(diffMs / (1000 * 60))
+      const diffHours = Math.floor(diffMins / 60)
+      const diffDays = Math.floor(diffHours / 24)
+
+      if (diffMins < 1) return isArabic ? 'الآن' : 'Just now'
+      if (diffMins < 60) return isArabic ? `منذ ${diffMins} دقيقة` : `${diffMins}m ago`
+      if (diffHours < 24) return isArabic ? `منذ ${diffHours} ساعة` : `${diffHours}h ago`
+      return isArabic ? `منذ ${diffDays} يوم` : `${diffDays}d ago`
+    } catch {
+      return isoString.slice(0, 10)
+    }
   }
 
   const getActivityIcon = (type: string) => {
@@ -37,6 +57,24 @@ export function RecentActivityCard({ activities }: RecentActivityCardProps) {
         return (
           <div className="p-2 rounded-xl bg-blue-500/10 text-blue-500">
             <ShoppingCart className="w-4 h-4" />
+          </div>
+        )
+      case 'customer':
+        return (
+          <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-500">
+            <UserPlus className="w-4 h-4" />
+          </div>
+        )
+      case 'stock_in':
+        return (
+          <div className="p-2 rounded-xl bg-teal-500/10 text-teal-500">
+            <PackageCheck className="w-4 h-4" />
+          </div>
+        )
+      case 'stock_out':
+        return (
+          <div className="p-2 rounded-xl bg-orange-500/10 text-orange-500">
+            <PackageMinus className="w-4 h-4" />
           </div>
         )
       case 'return':
@@ -66,16 +104,22 @@ export function RecentActivityCard({ activities }: RecentActivityCardProps) {
     }
   }
 
-  const getActivityTypeLabel = (type: string) => {
+  const getActivityBadge = (type: string) => {
     switch (type) {
       case 'sale':
-        return isRtl ? 'فاتورة بيع' : 'Sale Invoice'
+        return isArabic ? 'مبيعات' : 'Sale'
+      case 'customer':
+        return isArabic ? 'عميل جديد' : 'New Customer'
+      case 'stock_in':
+        return isArabic ? 'إيداع مخزني' : 'Stock In'
+      case 'stock_out':
+        return isArabic ? 'صرف مخزني' : 'Stock Out'
       case 'return':
-        return isRtl ? 'مرتجع مبيعات' : 'Sales Return'
+        return isArabic ? 'مرتجع' : 'Return'
       case 'expense':
-        return isRtl ? 'مصروف تشغيلي' : 'Expense'
+        return isArabic ? 'مصروف' : 'Expense'
       case 'purchase':
-        return isRtl ? 'فاتورة شراء' : 'Purchase'
+        return isArabic ? 'شراء' : 'Purchase'
       default:
         return type
     }
@@ -83,58 +127,58 @@ export function RecentActivityCard({ activities }: RecentActivityCardProps) {
 
   return (
     <div className="p-6 rounded-2xl border border-border bg-card shadow-sm space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="p-2 bg-primary/10 text-primary rounded-xl">
             <Activity className="w-4 h-4" />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-foreground">{t('dashboard.recentActivity')}</h2>
+            <h2 className="text-sm font-bold text-foreground">
+              {isArabic ? 'النشاط الأخير بالمتجر' : 'Recent Activity Feed'}
+            </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {isRtl ? 'سجل العمليات المباشر بالمتجر' : 'Live timeline of store events'}
+              {isArabic ? 'سجل العمليات والعملاء وحركات المخزون الأخيرة' : 'Latest sales, added customers, and stock adjustments'}
             </p>
           </div>
         </div>
       </div>
 
+      {/* Feed List */}
       {activities.length === 0 ? (
-        <div className="h-44 flex items-center justify-center text-muted-foreground text-xs">
-          {t('dashboard.noData')}
+        <div className="h-52 flex items-center justify-center text-muted-foreground text-xs font-semibold">
+          {isArabic ? 'لا يوجد نشاط مسجل مؤخراً' : 'No activity logged yet'}
         </div>
       ) : (
-        <div className="divide-y divide-border/60 text-xs">
+        <div className="divide-y divide-border/60 max-h-80 overflow-y-auto pr-1 text-xs">
           {activities.map(act => (
-            <div key={`${act.type}-${act.id}`} className="py-2.5 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
+            <div key={act.id} className="py-2.5 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
                 {getActivityIcon(act.type)}
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-foreground">{act.referenceNumber}</span>
-                    <span className="px-1.5 py-0.2 text-[10px] rounded bg-muted text-muted-foreground font-medium">
-                      {getActivityTypeLabel(act.type)}
+                <div className="min-w-0 truncate">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-bold text-foreground truncate">
+                      {act.referenceNumber}
+                    </span>
+                    <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-muted text-muted-foreground">
+                      {getActivityBadge(act.type)}
                     </span>
                   </div>
                   <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                    {act.userName ? `${act.userName} • ` : ''}
-                    {new Date(act.date).toLocaleTimeString(isRtl ? 'ar-EG' : 'en-US', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                    {act.description}
                   </p>
                 </div>
               </div>
 
               <div className="text-right shrink-0">
-                <span
-                  className={`font-bold text-xs ${
-                    act.type === 'return' || act.type === 'expense'
-                      ? 'text-rose-600 dark:text-rose-400'
-                      : 'text-emerald-600 dark:text-emerald-400'
-                  }`}
-                >
-                  {act.type === 'return' || act.type === 'expense' ? '-' : '+'}
-                  {formatCurrency(act.amount)}
-                </span>
+                {act.amount != null && (
+                  <p className="font-bold text-foreground">
+                    {formatCurrency(act.amount)}
+                  </p>
+                )}
+                <p className="text-[10px] text-muted-foreground">
+                  {formatRelativeTime(act.date)}
+                </p>
               </div>
             </div>
           ))}

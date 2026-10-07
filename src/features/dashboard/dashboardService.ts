@@ -10,7 +10,9 @@ import {
   DashboardDateRange,
   DateRangePreset,
   DashboardKPIs,
+  KpiTrend,
   SalesTrendPoint,
+  HourlySalesPoint,
   PaymentMethodMetric,
   ExpenseCategoryMetric,
   TopProductItem,
@@ -21,6 +23,7 @@ import {
   CustomerSummary,
   SupplierSummary,
   RecentActivityItem,
+  DashboardAlert,
   DashboardData,
 } from './types'
 
@@ -59,14 +62,17 @@ export class DashboardService {
         end.setHours(23, 59, 59, 999)
         break
       }
-      case 'last7days': {
-        start.setDate(start.getDate() - 6)
+      case 'thisWeek': {
+        // Start from beginning of current week (Saturday = 6 in JS Date or 7 days ago)
+        const day = start.getDay() // 0 = Sunday, 6 = Saturday
+        const diff = (day + 1) % 7 // Distance from Saturday
+        start.setDate(start.getDate() - diff)
         start.setHours(0, 0, 0, 0)
         end.setHours(23, 59, 59, 999)
         break
       }
-      case 'last30days': {
-        start.setDate(start.getDate() - 29)
+      case 'last7days': {
+        start.setDate(start.getDate() - 6)
         start.setHours(0, 0, 0, 0)
         end.setHours(23, 59, 59, 999)
         break
@@ -81,8 +87,19 @@ export class DashboardService {
         start.setMonth(start.getMonth() - 1)
         start.setDate(1)
         start.setHours(0, 0, 0, 0)
-        // Last day of last month
         end.setDate(0)
+        end.setHours(23, 59, 59, 999)
+        break
+      }
+      case 'thisYear': {
+        start.setMonth(0, 1)
+        start.setHours(0, 0, 0, 0)
+        end.setHours(23, 59, 59, 999)
+        break
+      }
+      case 'last30days': {
+        start.setDate(start.getDate() - 29)
+        start.setHours(0, 0, 0, 0)
         end.setHours(23, 59, 59, 999)
         break
       }
@@ -100,97 +117,259 @@ export class DashboardService {
   }
 
   /**
-   * Fetch all main operational KPIs for the selected date range
+   * Helper to compute comparison date range (e.g. yesterday for today, previous month for this month)
    */
-  async getKPIs(range: DashboardDateRange): Promise<DashboardKPIs> {
-    const db = getDb()
+  getPreviousDateRange(range: DashboardDateRange): { startDate: string; endDate: string } {
+    const curStart = new Date(range.startDate)
+    const curEnd = new Date(range.endDate)
+    const duration = curEnd.getTime() - curStart.getTime()
 
-    // 1. Completed Sales
-    const [salesRow] = await db.select<Array<{ total: number; count: number }>>(`
-      SELECT 
-        COALESCE(SUM(total), 0) AS total,
-        COUNT(id) AS count
-      FROM sales
-      WHERE created_at >= ? AND created_at <= ? AND status = 'completed'
-    `, [range.startDate, range.endDate])
+    if (range.preset === 'today') {
+      const pStart = new Date(curStart)
+      pStart.setDate(pStart.getDate() - 1)
+      const pEnd = new Date(curEnd)
+      pEnd.setDate(pEnd.getDate() - 1)
+      return { startDate: pStart.toISOString(), endDate: pEnd.toISOString() }
+    }
 
-    // 2. Sale items total quantity and profit (historical snapshot)
-    const [itemsRow] = await db.select<Array<{ items: number; gross_profit: number }>>(`
-      SELECT 
-        COALESCE(SUM(si.quantity), 0) AS items,
-        COALESCE(SUM(si.profit), 0) AS gross_profit
-      FROM sale_items si
-      JOIN sales s ON si.sale_id = s.id
-      WHERE s.created_at >= ? AND s.created_at <= ? AND s.status = 'completed'
-    `, [range.startDate, range.endDate])
+    if (range.preset === 'thisMonth') {
+      const pStart = new Date(curStart)
+      pStart.setMonth(pStart.getMonth() - 1)
+      const pEnd = new Date(curStart)
+      pEnd.setMilliseconds(-1)
+      return { startDate: pStart.toISOString(), endDate: pEnd.toISOString() }
+    }
 
-    // 3. Completed Returns
-    const [returnsRow] = await db.select<Array<{ total_refund: number }>>(`
-      SELECT 
-        COALESCE(SUM(refund_amount), 0) AS total_refund
-      FROM returns
-      WHERE created_at >= ? AND created_at <= ? AND (status = 'completed' OR status IS NULL)
-    `, [range.startDate, range.endDate])
+    if (range.preset === 'thisYear') {
+      const pStart = new Date(curStart)
+      pStart.setFullYear(pStart.getFullYear() - 1)
+      const pEnd = new Date(curEnd)
+      pEnd.setFullYear(pEnd.getFullYear() - 1)
+      return { startDate: pStart.toISOString(), endDate: pEnd.toISOString() }
+    }
 
-    // 4. Returns profit deduction impact
-    const [returnProfitRow] = await db.select<Array<{ return_profit: number }>>(`
-      SELECT 
-        COALESCE(SUM(ri.quantity * ((si.unit_price - si.cost_price) - (si.discount_amount / NULLIF(si.quantity, 0)))), 0) AS return_profit
-      FROM return_items ri
-      JOIN returns r ON ri.return_id = r.id
-      JOIN sale_items si ON ri.sale_item_id = si.id
-      WHERE r.created_at >= ? AND r.created_at <= ? AND (r.status = 'completed' OR r.status IS NULL)
-    `, [range.startDate, range.endDate])
+    const prevEnd = new Date(curStart.getTime() - 1)
+    const prevStart = new Date(prevEnd.getTime() - duration)
+    return { startDate: prevStart.toISOString(), endDate: prevEnd.toISOString() }
+  }
 
-    // 5. Completed Expenses
-    const [expensesRow] = await db.select<Array<{ total: number }>>(`
-      SELECT 
-        COALESCE(SUM(amount), 0) AS total
-      FROM expenses
-      WHERE (expense_date >= ? AND expense_date <= ?) 
-        AND (status = 'completed' OR status IS NULL)
-    `, [range.startDate, range.endDate])
-
-    // 6. Completed Purchases
-    const [purchasesRow] = await db.select<Array<{ total: number }>>(`
-      SELECT 
-        COALESCE(SUM(total), 0) AS total
-      FROM purchases
-      WHERE (purchased_at >= ? AND purchased_at <= ?)
-        AND (status = 'received' OR status = 'completed' OR status IS NULL)
-    `, [range.startDate, range.endDate])
-
-    const totalSales = Number(salesRow?.total) || 0
-    const salesCount = Number(salesRow?.count) || 0
-    const itemsSold = Number(itemsRow?.items) || 0
-    const initialGrossProfit = Number(itemsRow?.gross_profit) || 0
-    const totalReturns = Number(returnsRow?.total_refund) || 0
-    const returnProfit = Number(returnProfitRow?.return_profit) || 0
-    const totalExpenses = Number(expensesRow?.total) || 0
-    const totalPurchases = Number(purchasesRow?.total) || 0
-
-    const netSales = Number((totalSales - totalReturns).toFixed(2))
-    const grossProfit = Number((initialGrossProfit - returnProfit).toFixed(2))
-
+  /**
+   * Compute percentage trend and direction
+   */
+  private computeTrend(current: number, previous: number): KpiTrend {
+    const diff = current - previous
+    let percent = 0
+    if (previous > 0) {
+      percent = Math.round((diff / previous) * 100)
+    } else if (current > 0) {
+      percent = 100
+    }
     return {
-      totalSales: Number(totalSales.toFixed(2)),
-      totalReturns: Number(totalReturns.toFixed(2)),
-      netSales,
-      grossProfit,
-      totalExpenses: Number(totalExpenses.toFixed(2)),
-      totalPurchases: Number(totalPurchases.toFixed(2)),
-      salesCount,
-      itemsSold,
+      value: Number(diff.toFixed(2)),
+      percent: Math.abs(percent),
+      isUp: current >= previous,
     }
   }
 
   /**
-   * Sales & Net Sales Trend by day across the interval
+   * Fetch 7-day sparklines for primary KPIs
+   */
+  async getSparklines(): Promise<Record<string, number[]>> {
+    const db = getDb()
+    const sevenDaysAgo = new Date()
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
+    sevenDaysAgo.setHours(0, 0, 0, 0)
+
+    const dailyRows = await db.select<Array<{
+      day: string
+      sales: number
+      count: number
+      profit: number
+    }>>(`
+      SELECT 
+        strftime('%Y-%m-%d', s.created_at) AS day,
+        COALESCE(SUM(s.total), 0) AS sales,
+        COUNT(s.id) AS count,
+        COALESCE(SUM(si.profit), 0) AS profit
+      FROM sales s
+      LEFT JOIN sale_items si ON si.sale_id = s.id
+      WHERE s.created_at >= ? AND s.status = 'completed'
+      GROUP BY strftime('%Y-%m-%d', s.created_at)
+      ORDER BY day ASC
+    `, [sevenDaysAgo.toISOString()])
+
+    const map = new Map<string, { sales: number; count: number; profit: number }>()
+    for (const r of dailyRows) {
+      map.set(r.day, {
+        sales: Number(r.sales) || 0,
+        count: Number(r.count) || 0,
+        profit: Number(r.profit) || 0,
+      })
+    }
+
+    const sales: number[] = []
+    const counts: number[] = []
+    const profits: number[] = []
+    const avgs: number[] = []
+
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      const dayKey = d.toISOString().slice(0, 10)
+      const item = map.get(dayKey) || { sales: 0, count: 0, profit: 0 }
+      sales.push(Number(item.sales.toFixed(2)))
+      counts.push(item.count)
+      profits.push(Number(item.profit.toFixed(2)))
+      avgs.push(item.count > 0 ? Number((item.sales / item.count).toFixed(2)) : 0)
+    }
+
+    return {
+      totalSales: sales,
+      netSales: sales,
+      grossProfit: profits,
+      salesCount: counts,
+      avgSale: avgs,
+    }
+  }
+
+  /**
+   * Fetch all main operational KPIs with trends, active customers, avg sale, and low stock
+   */
+  async getKPIs(range: DashboardDateRange): Promise<DashboardKPIs> {
+    const db = getDb()
+    const prevRange = this.getPreviousDateRange(range)
+
+    // Helper query for sales aggregates
+    const querySalesAgg = async (start: string, end: string) => {
+      const [sales] = await db.select<Array<{ total: number; count: number }>>(`
+        SELECT COALESCE(SUM(total), 0) AS total, COUNT(id) AS count
+        FROM sales
+        WHERE created_at >= ? AND created_at <= ? AND status = 'completed'
+      `, [start, end])
+
+      const [items] = await db.select<Array<{ items: number; gross_profit: number }>>(`
+        SELECT COALESCE(SUM(si.quantity), 0) AS items, COALESCE(SUM(si.profit), 0) AS gross_profit
+        FROM sale_items si
+        JOIN sales s ON si.sale_id = s.id
+        WHERE s.created_at >= ? AND s.created_at <= ? AND s.status = 'completed'
+      `, [start, end])
+
+      const [returns] = await db.select<Array<{ total_refund: number }>>(`
+        SELECT COALESCE(SUM(refund_amount), 0) AS total_refund
+        FROM returns
+        WHERE created_at >= ? AND created_at <= ? AND (status = 'completed' OR status IS NULL)
+      `, [start, end])
+
+      const [returnProfit] = await db.select<Array<{ return_profit: number }>>(`
+        SELECT COALESCE(SUM(ri.quantity * ((si.unit_price - si.cost_price) - (si.discount_amount / NULLIF(si.quantity, 0)))), 0) AS return_profit
+        FROM return_items ri
+        JOIN returns r ON ri.return_id = r.id
+        JOIN sale_items si ON ri.sale_item_id = si.id
+        WHERE r.created_at >= ? AND r.created_at <= ? AND (r.status = 'completed' OR r.status IS NULL)
+      `, [start, end])
+
+      const [expenses] = await db.select<Array<{ total: number }>>(`
+        SELECT COALESCE(SUM(amount), 0) AS total
+        FROM expenses
+        WHERE (expense_date >= ? AND expense_date <= ?) AND (status = 'completed' OR status IS NULL)
+      `, [start, end])
+
+      const [purchases] = await db.select<Array<{ total: number }>>(`
+        SELECT COALESCE(SUM(total), 0) AS total
+        FROM purchases
+        WHERE (purchased_at >= ? AND purchased_at <= ?) AND (status = 'received' OR status = 'completed' OR status IS NULL)
+      `, [start, end])
+
+      const [customers] = await db.select<Array<{ active: number }>>(`
+        SELECT COUNT(DISTINCT customer_id) AS active
+        FROM sales
+        WHERE created_at >= ? AND created_at <= ? AND status = 'completed' AND customer_id IS NOT NULL
+      `, [start, end])
+
+      const totalSales = Number(sales?.total) || 0
+      const salesCount = Number(sales?.count) || 0
+      const itemsSold = Number(items?.items) || 0
+      const grossProfitRaw = Number(items?.gross_profit) || 0
+      const totalReturns = Number(returns?.total_refund) || 0
+      const retProfit = Number(returnProfit?.return_profit) || 0
+      const totalExpenses = Number(expenses?.total) || 0
+      const totalPurchases = Number(purchases?.total) || 0
+      const activeCustomers = Number(customers?.active) || 0
+
+      const netSales = Number((totalSales - totalReturns).toFixed(2))
+      const grossProfit = Number((grossProfitRaw - retProfit).toFixed(2))
+      const avgSale = salesCount > 0 ? Number((totalSales / salesCount).toFixed(2)) : 0
+
+      return {
+        totalSales,
+        salesCount,
+        itemsSold,
+        totalReturns,
+        totalExpenses,
+        totalPurchases,
+        netSales,
+        grossProfit,
+        avgSale,
+        activeCustomers,
+      }
+    }
+
+    // Query current and previous periods concurrently
+    const [curr, prev, sparklines, stockCounts] = await Promise.all([
+      querySalesAgg(range.startDate, range.endDate),
+      querySalesAgg(prevRange.startDate, prevRange.endDate),
+      this.getSparklines(),
+      db.select<Array<{ low_count: number; oos_count: number }>>(`
+        SELECT 
+          COALESCE(SUM(CASE WHEN current_stock <= min_stock AND min_stock > 0 THEN 1 ELSE 0 END), 0) AS low_count,
+          COALESCE(SUM(CASE WHEN current_stock <= 0 THEN 1 ELSE 0 END), 0) AS oos_count
+        FROM products
+        WHERE is_active = 1
+      `),
+    ])
+
+    const lowStockCount = Number(stockCounts[0]?.low_count) || 0
+    const outOfStockCount = Number(stockCounts[0]?.oos_count) || 0
+
+    const trends: Record<string, KpiTrend> = {
+      totalSales: this.computeTrend(curr.totalSales, prev.totalSales),
+      netSales: this.computeTrend(curr.netSales, prev.netSales),
+      grossProfit: this.computeTrend(curr.grossProfit, prev.grossProfit),
+      totalExpenses: this.computeTrend(curr.totalExpenses, prev.totalExpenses),
+      totalPurchases: this.computeTrend(curr.totalPurchases, prev.totalPurchases),
+      totalReturns: this.computeTrend(curr.totalReturns, prev.totalReturns),
+      salesCount: this.computeTrend(curr.salesCount, prev.salesCount),
+      avgSale: this.computeTrend(curr.avgSale, prev.avgSale),
+      activeCustomers: this.computeTrend(curr.activeCustomers, prev.activeCustomers),
+      lowStockCount: { value: lowStockCount, percent: 0, isUp: lowStockCount === 0 },
+    }
+
+    return {
+      totalSales: Number(curr.totalSales.toFixed(2)),
+      totalReturns: Number(curr.totalReturns.toFixed(2)),
+      netSales: curr.netSales,
+      grossProfit: curr.grossProfit,
+      totalExpenses: Number(curr.totalExpenses.toFixed(2)),
+      totalPurchases: Number(curr.totalPurchases.toFixed(2)),
+      salesCount: curr.salesCount,
+      itemsSold: curr.itemsSold,
+      avgSale: curr.avgSale,
+      activeCustomers: curr.activeCustomers,
+      lowStockCount,
+      outOfStockCount,
+      trends,
+      sparklines,
+    }
+  }
+
+  /**
+   * Sales & Net Sales Trend with comparison to previous period
    */
   async getSalesTrend(range: DashboardDateRange): Promise<SalesTrendPoint[]> {
     const db = getDb()
+    const prevRange = this.getPreviousDateRange(range)
 
-    // Daily Sales
+    // Current daily sales
     const salesRows = await db.select<Array<{ day: string; sales: number; profit: number }>>(`
       SELECT 
         strftime('%Y-%m-%d', s.created_at) AS day,
@@ -203,7 +382,7 @@ export class DashboardService {
       ORDER BY day ASC
     `, [range.startDate, range.endDate])
 
-    // Daily Returns
+    // Current daily returns
     const returnRows = await db.select<Array<{ day: string; returns: number }>>(`
       SELECT 
         strftime('%Y-%m-%d', created_at) AS day,
@@ -213,7 +392,7 @@ export class DashboardService {
       GROUP BY strftime('%Y-%m-%d', created_at)
     `, [range.startDate, range.endDate])
 
-    // Daily Expenses
+    // Current daily expenses
     const expenseRows = await db.select<Array<{ day: string; expenses: number }>>(`
       SELECT 
         strftime('%Y-%m-%d', expense_date) AS day,
@@ -222,6 +401,19 @@ export class DashboardService {
       WHERE expense_date >= ? AND expense_date <= ? AND (status = 'completed' OR status IS NULL)
       GROUP BY strftime('%Y-%m-%d', expense_date)
     `, [range.startDate, range.endDate])
+
+    // Previous period sales to align comparison
+    const prevSalesRows = await db.select<Array<{ day: string; sales: number }>>(`
+      SELECT 
+        strftime('%Y-%m-%d', created_at) AS day,
+        COALESCE(SUM(total), 0) AS sales
+      FROM sales
+      WHERE created_at >= ? AND created_at <= ? AND status = 'completed'
+      GROUP BY strftime('%Y-%m-%d', created_at)
+      ORDER BY day ASC
+    `, [prevRange.startDate, prevRange.endDate])
+
+    const prevList = prevSalesRows.map(r => Number(r.sales) || 0)
 
     const map = new Map<string, { sales: number; returns: number; expenses: number; profit: number }>()
 
@@ -246,10 +438,8 @@ export class DashboardService {
       map.set(r.day, existing)
     }
 
-    // Sort days chronologically
     const sortedDays = Array.from(map.keys()).sort()
 
-    // If single day (Today or Yesterday), provide at least that day
     if (sortedDays.length === 0) {
       const day = range.startDate.slice(0, 10)
       return [{
@@ -260,10 +450,11 @@ export class DashboardService {
         netSales: 0,
         expenses: 0,
         profit: 0,
+        previousSales: prevList[0] || 0,
       }]
     }
 
-    return sortedDays.map(day => {
+    return sortedDays.map((day, idx) => {
       const item = map.get(day)!
       const netSales = Number((item.sales - item.returns).toFixed(2))
       return {
@@ -274,8 +465,46 @@ export class DashboardService {
         netSales,
         expenses: Number(item.expenses.toFixed(2)),
         profit: Number(item.profit.toFixed(2)),
+        previousSales: prevList[idx] != null ? Number(prevList[idx].toFixed(2)) : undefined,
       }
     })
+  }
+
+  /**
+   * Hourly sales distribution for peak store hours analysis
+   */
+  async getHourlySales(range: DashboardDateRange): Promise<HourlySalesPoint[]> {
+    const db = getDb()
+    const rows = await db.select<Array<{ hour: string; sales: number; count: number }>>(`
+      SELECT 
+        strftime('%H', created_at) AS hour,
+        COALESCE(SUM(total), 0) AS sales,
+        COUNT(id) AS count
+      FROM sales
+      WHERE created_at >= ? AND created_at <= ? AND status = 'completed'
+      GROUP BY strftime('%H', created_at)
+      ORDER BY hour ASC
+    `, [range.startDate, range.endDate])
+
+    const map = new Map<number, { sales: number; count: number }>()
+    for (const r of rows) {
+      map.set(parseInt(r.hour, 10), {
+        sales: Number(r.sales) || 0,
+        count: Number(r.count) || 0,
+      })
+    }
+
+    const points: HourlySalesPoint[] = []
+    for (let h = 8; h <= 23; h++) {
+      const item = map.get(h) || { sales: 0, count: 0 }
+      points.push({
+        hour: h,
+        label: `${String(h).padStart(2, '0')}:00`,
+        sales: Number(item.sales.toFixed(2)),
+        count: item.count,
+      })
+    }
+    return points
   }
 
   /**
@@ -412,7 +641,7 @@ export class DashboardService {
   }
 
   /**
-   * Top category sales performance
+   * Category sales performance
    */
   async getCategoryPerformance(range: DashboardDateRange, limit = 5): Promise<CategoryPerformanceItem[]> {
     const db = getDb()
@@ -617,128 +846,265 @@ export class DashboardService {
   }
 
   /**
-   * Recent Activity Feed across Sales, Returns, Expenses, Purchases, Cash Movements
+   * Operational Alerts (Out of Stock, Low Stock, Overdue Debts, Backup, Shift)
    */
-  async getRecentActivity(limit = 12): Promise<RecentActivityItem[]> {
+  async getAlerts(userId?: string): Promise<DashboardAlert[]> {
     const db = getDb()
+    const alerts: DashboardAlert[] = []
 
-    // 1. Recent completed sales
-    const sales = await db.select<Array<{
-      id: string
-      invoice_number: string
-      total: number
-      created_at: string
-      cashier_name: string | null
-      status: string
-    }>>(`
-      SELECT 
-        s.id,
-        s.invoice_number,
-        s.total,
-        s.created_at,
-        COALESCE(u.full_name, u.username) AS cashier_name,
-        s.status
-      FROM sales s
-      LEFT JOIN users u ON s.cashier_id = u.id
-      WHERE s.status = 'completed'
-      ORDER BY s.created_at DESC
-      LIMIT ?
-    `, [limit])
+    try {
+      // 1. Out of stock products
+      const [outOfStock] = await db.select<Array<{ count: number }>>(`
+        SELECT COUNT(id) AS count FROM products WHERE current_stock <= 0 AND is_active = 1
+      `)
+      const oosCount = Number(outOfStock?.count) || 0
+      if (oosCount > 0) {
+        alerts.push({
+          id: 'out_of_stock',
+          type: 'out_of_stock',
+          severity: 'critical',
+          titleAr: `منتجات نفذت من المخزون: ${oosCount}`,
+          titleEn: `Out of Stock Products: ${oosCount}`,
+          subtitleAr: 'أصناف تحتاج إعادة توريد فورية',
+          subtitleEn: 'Items require immediate restocking',
+          count: oosCount,
+          route: '/inventory',
+        })
+      }
 
-    // 2. Recent returns
-    const returns = await db.select<Array<{
-      id: string
-      return_number: string
-      refund_amount: number
-      created_at: string
-      user_name: string | null
-      status: string
-    }>>(`
-      SELECT 
-        r.id,
-        r.return_number,
-        r.refund_amount,
-        r.created_at,
-        COALESCE(u.full_name, u.username) AS user_name,
-        COALESCE(r.status, 'completed') AS status
-      FROM returns r
-      LEFT JOIN users u ON r.user_id = u.id
-      WHERE (r.status = 'completed' OR r.status IS NULL)
-      ORDER BY r.created_at DESC
-      LIMIT ?
-    `, [limit])
+      // 2. Low stock products
+      const [lowStock] = await db.select<Array<{ count: number }>>(`
+        SELECT COUNT(id) AS count FROM products WHERE current_stock <= min_stock AND current_stock > 0 AND min_stock > 0 AND is_active = 1
+      `)
+      const lsCount = Number(lowStock?.count) || 0
+      if (lsCount > 0) {
+        alerts.push({
+          id: 'low_stock',
+          type: 'low_stock',
+          severity: 'warning',
+          titleAr: `منتجات أقل من الحد الأدنى: ${lsCount}`,
+          titleEn: `Low Stock Items: ${lsCount}`,
+          subtitleAr: 'أصناف اقتربت من النفاد ويجب طلبها',
+          subtitleEn: 'Items approaching reorder threshold',
+          count: lsCount,
+          route: '/inventory',
+        })
+      }
 
-    // 3. Recent expenses
-    const expenses = await db.select<Array<{
-      id: string
-      expense_number: string
-      amount: number
-      description: string
-      expense_date: string
-      created_at: string
-      user_name: string | null
-      status: string
-    }>>(`
-      SELECT 
-        e.id,
-        e.expense_number,
-        e.amount,
-        e.description,
-        e.expense_date,
-        e.created_at,
-        COALESCE(u.full_name, u.username) AS user_name,
-        COALESCE(e.status, 'completed') AS status
-      FROM expenses e
-      LEFT JOIN users u ON COALESCE(e.user_id, e.recorded_by_id) = u.id
-      ORDER BY e.created_at DESC
-      LIMIT ?
-    `, [limit])
+      // 3. Customer outstanding debts
+      const [debts] = await db.select<Array<{ count: number; total: number }>>(`
+        SELECT COUNT(id) AS count, COALESCE(SUM(balance), 0) AS total FROM customers WHERE balance > 0 AND is_active = 1
+      `)
+      const debtCount = Number(debts?.count) || 0
+      const debtTotal = Number(debts?.total) || 0
+      if (debtCount > 0) {
+        alerts.push({
+          id: 'overdue_debt',
+          type: 'overdue_debt',
+          severity: 'warning',
+          titleAr: `ديون عملاء مستحقة: ${debtCount} عميل (${debtTotal.toLocaleString()} ج.م)`,
+          titleEn: `Customer Debts: ${debtCount} (${debtTotal.toLocaleString()} EGP)`,
+          subtitleAr: 'أرصدة آجلة تتطلب متابعة تحصيل',
+          subtitleEn: 'Accounts receivable requiring collection',
+          count: debtCount,
+          amount: debtTotal,
+          route: '/customers',
+        })
+      }
 
-    // Combine into unified feed
+      // 4. Old backup check
+      const [backupSetting] = await db.select<Array<{ value: string }>>(`
+        SELECT value FROM settings WHERE key = 'last_auto_backup_at'
+      `)
+      const lastBackupStr = backupSetting?.value
+      const daysSinceBackup = lastBackupStr
+        ? Math.floor((Date.now() - new Date(lastBackupStr).getTime()) / (1000 * 60 * 60 * 24))
+        : 999
+      if (daysSinceBackup >= 7) {
+        alerts.push({
+          id: 'old_backup',
+          type: 'old_backup',
+          severity: 'info',
+          titleAr: `نسخة احتياطية قديمة: منذ ${daysSinceBackup === 999 ? 'فترة طويلة' : `${daysSinceBackup} أيام`}`,
+          titleEn: `Backup Overdue: ${daysSinceBackup === 999 ? 'Never backed up' : `${daysSinceBackup} days ago`}`,
+          subtitleAr: 'يُنصح بإنشاء نسخة احتياطية جديدة لحماية البيانات',
+          subtitleEn: 'Recommended to create a fresh backup',
+          date: lastBackupStr,
+          route: '/settings',
+        })
+      }
+
+      // 5. Shift status check
+      if (userId) {
+        const activeShift = await cashRegisterService.getActiveShift(userId)
+        if (!activeShift) {
+          alerts.push({
+            id: 'no_shift',
+            type: 'no_shift',
+            severity: 'info',
+            titleAr: 'لا توجد وردية مفتوحة حالياً للكاشير',
+            titleEn: 'No cash shift currently open',
+            subtitleAr: 'قم بفتح وردية لتسجيل الحركات النقدية بدقة',
+            subtitleEn: 'Open a shift to track cash movements',
+            route: '/cash-register',
+          })
+        }
+      }
+
+      // 6. All clear if no critical or warning alerts
+      if (alerts.length === 0) {
+        alerts.push({
+          id: 'all_good',
+          type: 'all_good',
+          severity: 'success',
+          titleAr: 'كل شيء يعمل بصورة ممتازة',
+          titleEn: 'All Systems Operational',
+          subtitleAr: 'المخزون آمن والنسخ الاحتياطي منتظم ولا توجد تنبيهات عاجلة',
+          subtitleEn: 'Healthy inventory levels, fresh backups, and no critical issues',
+          route: '/reports',
+        })
+      }
+    } catch (err) {
+      console.warn('Failed to compute dashboard alerts:', err)
+    }
+
+    return alerts
+  }
+
+  /**
+   * Recent Activity Feed across Sales, Customers, Inventory Movements, Returns, Expenses
+   */
+  async getRecentActivity(limit = 10): Promise<RecentActivityItem[]> {
+    const db = getDb()
     const list: RecentActivityItem[] = []
 
-    for (const s of sales) {
-      list.push({
-        id: s.id,
-        type: 'sale',
-        referenceNumber: s.invoice_number,
-        description: 'عملية بيع مكتملة',
-        amount: Number(s.total) || 0,
-        date: s.created_at,
-        userName: s.cashier_name || undefined,
-        status: s.status,
-      })
+    try {
+      // 1. Last 5 completed sales
+      const sales = await db.select<Array<{
+        id: string
+        invoice_number: string
+        total: number
+        created_at: string
+        cashier_name: string | null
+        customer_name: string | null
+      }>>(`
+        SELECT 
+          s.id,
+          s.invoice_number,
+          s.total,
+          s.created_at,
+          COALESCE(u.full_name, u.username) AS cashier_name,
+          c.name AS customer_name
+        FROM sales s
+        LEFT JOIN users u ON s.cashier_id = u.id
+        LEFT JOIN customers c ON s.customer_id = c.id
+        WHERE s.status = 'completed'
+        ORDER BY s.created_at DESC
+        LIMIT 5
+      `)
+
+      for (const s of sales) {
+        list.push({
+          id: s.id,
+          type: 'sale',
+          referenceNumber: s.invoice_number,
+          description: s.customer_name ? `فاتورة بيع للعميل ${s.customer_name}` : 'عملية بيع مكتملة',
+          amount: Number(s.total) || 0,
+          date: s.created_at,
+          userName: s.cashier_name || undefined,
+          status: 'completed',
+        })
+      }
+
+      // 2. Last 3 customers created
+      const customers = await db.select<Array<{
+        id: string
+        name: string
+        phone: string | null
+        created_at: string
+      }>>(`
+        SELECT id, name, phone, created_at
+        FROM customers
+        WHERE is_active = 1
+        ORDER BY created_at DESC
+        LIMIT 3
+      `)
+
+      for (const c of customers) {
+        list.push({
+          id: c.id,
+          type: 'customer',
+          referenceNumber: c.phone || 'عميل',
+          description: `إضافة عميل جديد: ${c.name}`,
+          date: c.created_at,
+          status: 'active',
+        })
+      }
+
+      // 3. Last 2 inventory movements
+      const movements = await db.select<Array<{
+        id: string
+        type: string
+        quantity: number
+        created_at: string
+        product_name: string | null
+        sku: string | null
+      }>>(`
+        SELECT 
+          im.id,
+          im.type,
+          im.quantity,
+          im.created_at,
+          p.name_ar AS product_name,
+          p.sku
+        FROM inventory_movements im
+        LEFT JOIN products p ON im.product_id = p.id
+        ORDER BY im.created_at DESC
+        LIMIT 2
+      `)
+
+      for (const m of movements) {
+        const isPositive = m.quantity > 0 || m.type === 'in' || m.type === 'purchase'
+        list.push({
+          id: m.id,
+          type: isPositive ? 'stock_in' : 'stock_out',
+          referenceNumber: m.sku || 'حركة مخزنية',
+          description: `حركة مخزون (${m.type}): ${m.product_name || 'منتج'} (${Math.abs(m.quantity)})`,
+          date: m.created_at,
+          status: 'completed',
+        })
+      }
+    } catch (err) {
+      console.warn('Failed to load recent activity feed:', err)
     }
 
-    for (const r of returns) {
-      list.push({
-        id: r.id,
-        type: 'return',
-        referenceNumber: r.return_number,
-        description: 'مرتجع مبيعات',
-        amount: Number(r.refund_amount) || 0,
-        date: r.created_at,
-        userName: r.user_name || undefined,
-        status: r.status,
-      })
-    }
-
-    for (const e of expenses) {
-      list.push({
-        id: e.id,
-        type: 'expense',
-        referenceNumber: e.expense_number || 'EXP',
-        description: e.description || 'مصروف تشغيلي',
-        amount: Number(e.amount) || 0,
-        date: e.expense_date || e.created_at,
-        userName: e.user_name || undefined,
-        status: e.status,
-      })
-    }
-
-    // Sort descending by timestamp and slice
+    // Sort descending by timestamp
     list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     return list.slice(0, limit)
+  }
+
+  /**
+   * STEP 9 API: getDashboardStats method for range-based analytics
+   */
+  async getDashboardStats(dateRange: { from: string; to: string }) {
+    const range: DashboardDateRange = {
+      preset: 'custom',
+      startDate: dateRange.from,
+      endDate: dateRange.to,
+    }
+    const data = await this.getDashboardData(range)
+    return {
+      kpis: data.kpis,
+      charts: {
+        salesOverTime: data.salesTrend,
+        topProducts: data.topProducts,
+        paymentMethods: data.paymentMethods,
+        categoryDistribution: data.categoryPerformance,
+        hourlySales: data.hourlySales,
+      },
+      alerts: data.alerts,
+      recentActivity: data.recentActivity,
+    }
   }
 
   /**
@@ -749,15 +1115,20 @@ export class DashboardService {
     let shiftReconciliation = null
 
     if (userId) {
-      activeShift = await cashRegisterService.getActiveShift(userId)
-      if (activeShift) {
-        shiftReconciliation = await cashRegisterService.getShiftReconciliation(activeShift.id)
+      try {
+        activeShift = await cashRegisterService.getActiveShift(userId)
+        if (activeShift) {
+          shiftReconciliation = await cashRegisterService.getShiftReconciliation(activeShift.id)
+        }
+      } catch (e) {
+        console.warn('Failed to check active shift:', e)
       }
     }
 
     const [
       kpis,
       salesTrend,
+      hourlySales,
       paymentMethods,
       expenseCategories,
       topProducts,
@@ -768,9 +1139,11 @@ export class DashboardService {
       customers,
       suppliers,
       recentActivity,
+      alerts,
     ] = await Promise.all([
       this.getKPIs(range),
       this.getSalesTrend(range),
+      this.getHourlySales(range),
       this.getPaymentMethodBreakdown(range),
       this.getExpenseCategoryBreakdown(range),
       this.getTopProducts(range),
@@ -781,11 +1154,13 @@ export class DashboardService {
       this.getCustomerSummary(range),
       this.getSupplierSummary(),
       this.getRecentActivity(),
+      this.getAlerts(userId),
     ])
 
     return {
       kpis,
       salesTrend,
+      hourlySales,
       paymentMethods,
       expenseCategories,
       topProducts,
@@ -796,6 +1171,7 @@ export class DashboardService {
       customers,
       suppliers,
       recentActivity,
+      alerts,
       shiftReconciliation,
       activeShift,
     }

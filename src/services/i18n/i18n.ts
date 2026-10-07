@@ -122,6 +122,8 @@ const arTranslation = {
         expenses: "المصروفات",
         purchases: "المشتريات",
         transactions: "عدد الفواتير",
+        salesCount: "عدد الفواتير",
+        avgSale: "متوسط قيمة الفاتورة",
         itemsSold: "القطع المباعة",
         cashBalance: "رصيد الخزينة",
         salesTrend: "مخطط اتجاه المبيعات والأرباح",
@@ -167,10 +169,12 @@ const arTranslation = {
         dateFilter: {
             today: "اليوم",
             yesterday: "أمس",
+            thisWeek: "هذا الأسبوع",
             last7days: "آخر 7 أيام",
             last30days: "آخر 30 يوماً",
             thisMonth: "هذا الشهر",
             lastMonth: "الشهر الماضي",
+            thisYear: "هذه السنة",
             custom: "نطاق مخصص"
         },
         refresh: "تحديث البيانات",
@@ -1218,6 +1222,8 @@ const enTranslation = {
         expenses: "Expenses",
         purchases: "Purchases",
         transactions: "Transactions",
+        salesCount: "Invoices Count",
+        avgSale: "Average Sale",
         itemsSold: "Items Sold",
         cashBalance: "Cash Balance",
         salesTrend: "Sales & Profit Trend",
@@ -1263,10 +1269,12 @@ const enTranslation = {
         dateFilter: {
             today: "Today",
             yesterday: "Yesterday",
+            thisWeek: "This Week",
             last7days: "Last 7 Days",
             last30days: "Last 30 Days",
             thisMonth: "This Month",
             lastMonth: "Last Month",
+            thisYear: "This Year",
             custom: "Custom Range"
         },
         refresh: "Refresh Data",
