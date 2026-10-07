@@ -291,6 +291,44 @@ class ProductService {
   }
 
   /**
+   * Helper alias method `create` supporting both snake_case and camelCase payloads
+   */
+  async create(
+    productData: any,
+    user?: { id?: string; fullName?: string }
+  ): Promise<{ id: string; productId: string; sku: string }> {
+    const payload: CreateProductInput = {
+      sku: productData.sku,
+      nameAr: productData.name_ar || productData.nameAr || '',
+      nameEn: productData.name_en || productData.nameEn || '',
+      description: productData.description || '',
+      categoryId: productData.category_id || productData.categoryId || null,
+      unitId: productData.unit_id || productData.unitId,
+      brandId: productData.brand_id || productData.brandId || null,
+      defaultSupplierId: productData.default_supplier_id || productData.defaultSupplierId || null,
+      purchasePrice: productData.purchase_price ?? productData.purchasePrice ?? 0,
+      sellingPrice: productData.selling_price ?? productData.sellingPrice ?? 0,
+      currentStock: productData.current_stock ?? productData.currentStock ?? 0,
+      minStock: productData.min_stock ?? productData.minStock ?? 0,
+      imagePath: productData.image_path ?? productData.imagePath ?? null,
+      drawerLocation: productData.drawer_location ?? productData.drawerLocation ?? null,
+      footprintPackage: productData.footprint_package ?? productData.footprintPackage ?? null,
+      datasheetUrl: productData.datasheet_url ?? productData.datasheetUrl ?? null,
+      sourceType: productData.source_type || productData.sourceType || 'LOCAL',
+      externalProductId: productData.external_product_id ? String(productData.external_product_id) : (productData.externalProductId ? String(productData.externalProductId) : null),
+      externalSku: productData.external_sku ?? productData.externalSku ?? null,
+      externalUrl: productData.external_url ?? productData.externalUrl ?? null,
+      websitePrice: productData.website_price ?? productData.websitePrice ?? null,
+      notes: productData.notes || null,
+      isActive: productData.is_active !== undefined ? Boolean(productData.is_active) : (productData.isActive !== undefined ? Boolean(productData.isActive) : true),
+      barcodes: productData.barcodes,
+      attributes: productData.attributes,
+    }
+    const res = await this.createProduct(payload, user)
+    return { id: res.productId, productId: res.productId, sku: res.sku }
+  }
+
+  /**
    * Create a new product with full relations, barcodes, attributes, inventory movement, and audit log
    */
   async createProduct(

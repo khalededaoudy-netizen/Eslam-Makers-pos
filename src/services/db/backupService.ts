@@ -14,7 +14,7 @@ export interface BackupRecord {
   file_path: string
   path?: string
   size_bytes: number
-  type: 'manual' | 'auto' | 'pre_restore'
+  type: 'manual' | 'auto' | 'pre_restore' | 'pre_reset'
   user_id?: string | null
   notes?: string | null
   created_at: string
@@ -47,7 +47,7 @@ class BackupService {
   /**
    * List all recorded database backups ordered by creation date descending
    */
-  async listBackups(options?: { type?: 'manual' | 'auto' | 'pre_restore' }): Promise<BackupRecord[]> {
+  async listBackups(options?: { type?: 'manual' | 'auto' | 'pre_restore' | 'pre_reset' }): Promise<BackupRecord[]> {
     const db = getDb()
     try {
       let query = 'SELECT * FROM backups'
@@ -70,7 +70,7 @@ class BackupService {
    */
   async createBackup(options?: {
     filename?: string
-    type?: 'manual' | 'auto' | 'pre_restore'
+    type?: 'manual' | 'auto' | 'pre_restore' | 'pre_reset'
     userId?: string | null
     notes?: string | null
     targetDir?: string
@@ -79,7 +79,7 @@ class BackupService {
     const type = options?.type || 'manual'
     const now = new Date()
     const timestampStr = now.toISOString().replace(/[:.]/g, '-').slice(0, 19)
-    const prefix = type === 'pre_restore' ? 'pre_restore_backup' : 'makers_pos_backup'
+    const prefix = type === 'pre_restore' ? 'pre_restore_backup' : type === 'pre_reset' ? 'pre_reset_backup' : 'makers_pos_backup'
     const filename = options?.filename || `${prefix}_${timestampStr}.db`
     const backupId = `backup-${uuidv4()}`
 

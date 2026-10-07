@@ -26,12 +26,14 @@ import {
   Percent,
   CheckCircle2,
   X,
+  Sparkles,
 } from 'lucide-react'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useAuthStore, usePermission } from '@/stores/authStore'
 import { formatCurrency } from '@/lib/formatters'
 import { ProductForm } from './components/ProductForm'
 import { ExcelImportModal } from './components/ExcelImportModal'
+import { SmartImportModal } from './components/SmartImportModal'
 import { MakersImportModal } from './components/MakersImportModal'
 import { ProductImage } from '@/components/common/ProductImage'
 import { excelProductService } from '@/services/products/excelProductService'
@@ -68,6 +70,7 @@ export function ProductsPage() {
   // Modals & Selection
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false)
+  const [isSmartImportOpen, setIsSmartImportOpen] = useState(false)
   const [isMakersModalOpen, setIsMakersModalOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<any>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -375,6 +378,37 @@ export function ProductsPage() {
             <Download className="w-3.5 h-3.5 text-emerald-600" />
             <span>{isAr ? 'تصدير Excel' : 'Export Excel'}</span>
           </button>
+
+          {/* Download Excel Template */}
+          <button
+            type="button"
+            onClick={() => {
+              const link = document.createElement('a')
+              link.href = '/templates/products_import_template.xlsx'
+              link.download = 'products_import_template.xlsx'
+              document.body.appendChild(link)
+              link.click()
+              document.body.removeChild(link)
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 bg-muted hover:bg-muted/80 text-foreground border border-border rounded-lg text-xs font-semibold transition-colors shadow-sm"
+            title={isAr ? 'تحميل قالب Excel الجاهز للاستيراد (3 أعمدة)' : 'Download Excel Template'}
+          >
+            <Download className="w-3.5 h-3.5 text-blue-500" />
+            <span>{isAr ? 'تحميل قالب Excel' : 'Download Template'}</span>
+          </button>
+
+          {/* Smart Excel Import */}
+          {canCreate && (
+            <button
+              type="button"
+              onClick={() => setIsSmartImportOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded-lg text-xs font-bold transition-colors shadow-sm"
+              title={isAr ? 'استيراد ذكي من Excel مع البحث التلقائي في MAKERS' : 'Smart Excel Import with MAKERS lookup'}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>{isAr ? 'استيراد من Excel (ذكي)' : 'Smart Excel Import'}</span>
+            </button>
+          )}
 
           {/* Excel Import */}
           {canCreate && (
@@ -702,6 +736,18 @@ export function ProductsPage() {
           isOpen={isExcelModalOpen}
           onClose={() => setIsExcelModalOpen(false)}
           onImportComplete={() => {
+            loadProducts()
+            loadFilterLookups()
+          }}
+        />
+      )}
+
+      {/* Smart Excel Import Modal */}
+      {isSmartImportOpen && (
+        <SmartImportModal
+          isOpen={isSmartImportOpen}
+          onClose={() => setIsSmartImportOpen(false)}
+          onSuccess={() => {
             loadProducts()
             loadFilterLookups()
           }}

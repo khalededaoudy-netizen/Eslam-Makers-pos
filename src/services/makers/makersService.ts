@@ -6,7 +6,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { AppDatabase } from '@/services/db/database'
 import { fetchMakersProducts, fetchMakersProductById } from './client'
-import { mapMakersProduct, isValidImageUrl } from './mapper'
+import { mapMakersProduct, isValidImageUrl, parseWebsitePrice } from './mapper'
 import {
   MakersMappedProduct,
   MakersSearchResult,
@@ -706,6 +706,24 @@ export async function backfillMissingProductImages(
   }
 
   return stats
+}
+
+export const makersService = {
+  searchCatalog: async (query: string) => {
+    const res = await fetchMakersProducts(query, 1, 10)
+    return res.products
+  },
+  fetchProductDetail: async (id: number | string) => {
+    const raw = await fetchMakersProductById(id)
+    return {
+      ...raw,
+      price: parseWebsitePrice(raw.prices),
+    }
+  },
+  getDetails: getMakersProductDetails,
+  checkDuplicate: checkDuplicateProduct,
+  saveProduct: saveImportedProduct,
+  downloadImage: downloadMakersProductImage,
 }
 
 

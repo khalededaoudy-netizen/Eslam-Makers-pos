@@ -1058,6 +1058,24 @@ const arTranslation = {
         accessDenied: "403 — غير مصرح بالوصول",
         noPermissionMessage: "عذراً، ليس لديك الصلاحيات الكافية للوصول إلى هذه الصفحة أو تنفيذ هذه العملية. يرجى مراجعة مسؤول النظام.",
         permissionDenied: "تم رفض العملية: ليس لديك الصلاحية المطلوبة"
+    },
+    smartImport: {
+        title: 'استيراد ذكي من Excel',
+        dropzone: 'اسحب ملف Excel هنا أو اضغط للاختيار',
+        preview: 'معاينة',
+        startImport: 'بدء الاستيراد',
+        searching: 'جاري البحث في MAKERS...',
+        current: 'الحالي',
+        of: 'من',
+        results: 'النتائج',
+        statusSuccess: 'نجح',
+        statusDuplicate: 'موجود مسبقاً',
+        statusNotFound: 'غير موجود في MAKERS',
+        statusError: 'خطأ',
+        exportResults: 'تصدير النتائج',
+        retryFailed: 'إعادة المحاولة',
+        downloadTemplate: 'تحميل قالب Excel',
+        priceNote: 'السعر اللي تكتبه هو اللي هيتسجل — مش سعر الموقع'
     }
 };
 
@@ -2118,6 +2136,24 @@ const enTranslation = {
         accessDenied: "403 — Access Denied",
         noPermissionMessage: "Sorry, you do not have sufficient permissions to access this page or perform this action. Please contact your system administrator.",
         permissionDenied: "Action rejected: permission denied"
+    },
+    smartImport: {
+        title: 'Smart Excel Import',
+        dropzone: 'Drop Excel file here or click to browse',
+        preview: 'Preview',
+        startImport: 'Start Import',
+        searching: 'Searching MAKERS...',
+        current: 'Current',
+        of: 'of',
+        results: 'Results',
+        statusSuccess: 'Success',
+        statusDuplicate: 'Already Exists',
+        statusNotFound: 'Not Found on MAKERS',
+        statusError: 'Error',
+        exportResults: 'Export Results',
+        retryFailed: 'Retry Failed',
+        downloadTemplate: 'Download Excel Template',
+        priceNote: 'The price you enter will be saved — not the website price'
     }
 };
 

@@ -31,18 +31,20 @@ import {
   FileText,
   CheckCircle,
   XCircle,
+  Trash2,
 } from 'lucide-react'
 import { useSettingsStore, Language, Theme, PaperWidth } from '@/stores/settingsStore'
 import { useAuthStore, usePermission } from '@/stores/authStore'
 import { backupService, BackupRecord } from '@/services/db/backupService'
 import { autoBackupService } from '@/services/db/autoBackupService'
 import { settingsService } from '@/services/settings/settingsService'
+import { resetOperationalData, getOperationalDataCounts } from '@/services/db/resetService'
 import { logger } from '@/services/db/loggerService'
 import { invoke } from '@tauri-apps/api/core'
 import { openExternalUrl, DEVELOPER_LINKEDIN_URL } from '@/lib/openUrl'
 import { getAvailablePrinters, printTestReceiptDirect } from '@/services/printer/directPrint'
 
-type TabType = 'general' | 'store' | 'pos' | 'receipt' | 'barcode' | 'database' | 'about'
+type TabType = 'general' | 'store' | 'pos' | 'receipt' | 'barcode' | 'database' | 'advanced' | 'about'
 
 export function SettingsPage() {
   const { t } = useTranslation()
@@ -152,6 +154,59 @@ export function SettingsPage() {
       loadBackups()
     }
   }, [activeTab])
+
+  // Danger Zone / Reset State
+  const [resetModalOpen, setResetModalOpen] = useState(false)
+  const [resetConfirmationInput, setResetConfirmationInput] = useState('')
+  const [keepAuditLogsSetting, setKeepAuditLogsSetting] = useState(true)
+  const [isResetting, setIsResetting] = useState(false)
+  const [operationalCounts, setOperationalCounts] = useState<Record<string, number>>({})
+  const [loadingCounts, setLoadingCounts] = useState(false)
+
+  const loadOperationalCounts = async () => {
+    setLoadingCounts(true)
+    try {
+      const counts = await getOperationalDataCounts()
+      setOperationalCounts(counts)
+    } catch (err) {
+      console.error('Failed to load operational data counts:', err)
+    } finally {
+      setLoadingCounts(false)
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === 'advanced') {
+      loadOperationalCounts()
+    }
+  }, [activeTab])
+
+  const handleExecuteReset = async () => {
+    if (resetConfirmationInput.trim().toUpperCase() !== 'RESET') {
+      return
+    }
+
+    setIsResetting(true)
+    setErrorMsg('')
+    setSuccessMsg('')
+    try {
+      const res = await resetOperationalData({
+        userId: user?.id || 'admin',
+        keepAuditLogs: keepAuditLogsSetting,
+      })
+      if (res.success) {
+        setSuccessMsg(t('settings.resetSuccess', 'تمت إعادة ضبط جميع البيانات التشغيلية بنجاح وتم إنشاء نسخة احتياطية إجبارية!'))
+        setResetModalOpen(false)
+        setResetConfirmationInput('')
+        await loadOperationalCounts()
+        await loadBackups()
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || (settings.language === 'ar' ? 'فشل إعادة ضبط البيانات' : 'Failed to reset operational data'))
+    } finally {
+      setIsResetting(false)
+    }
+  }
 
   const handleCreateBackup = async () => {
     if (!canEdit) return
@@ -553,6 +608,18 @@ export function SettingsPage() {
           >
             <Database className="w-4 h-4" />
             {t('settings.databaseBackup', 'قاعدة البيانات والنسخ')}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('advanced')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+              activeTab === 'advanced'
+                ? 'bg-rose-600 text-white shadow-sm'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            }`}
+          >
+            <ShieldAlert className="w-4 h-4 text-rose-500" />
+            {t('settings.advanced', 'متقدم (منطقة الخطر)')}
           </button>
 
           <button
@@ -1354,6 +1421,205 @@ export function SettingsPage() {
                       {isRestoring
                         ? t('settings.restoring', 'جاري الاستعادة...')
                         : t('settings.confirmRestoreBtn', 'تأكيد واستعادة الآن')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab: Advanced / Danger Zone */}
+        {activeTab === 'advanced' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            {!isAdmin ? (
+              <div className="bg-card border border-destructive/20 rounded-2xl p-8 text-center space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-destructive/10 text-destructive flex items-center justify-center mx-auto">
+                  <ShieldAlert className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-bold text-foreground">
+                  {settings.language === 'ar' ? 'غير مصرح لك بالدخول' : 'Access Restricted'}
+                </h3>
+                <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                  {settings.language === 'ar'
+                    ? 'منطقة الخطر وإعادة ضبط البيانات متاحة فقط لحساب المدير المسؤول (Admin).'
+                    : 'The Danger Zone and data reset features are restricted to administrator accounts only.'}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Danger Zone Red Card */}
+                <div className="bg-rose-500/5 dark:bg-rose-950/20 border-2 border-rose-500/30 rounded-2xl p-6 shadow-sm space-y-6">
+                  <div className="flex items-center justify-between flex-wrap gap-4 pb-4 border-b border-rose-500/20">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 rounded-2xl bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30">
+                        <ShieldAlert className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-bold text-rose-600 dark:text-rose-400 flex items-center gap-2">
+                          <span>{settings.language === 'ar' ? 'منطقة الخطر (Danger Zone) — إعادة ضبط البيانات' : 'Danger Zone — Operational Data Reset'}</span>
+                        </h2>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {settings.language === 'ar'
+                            ? 'إعادة تعيين ومسح كافة البيانات التشغيلية مع الحفاظ التام على حسابات المستخدمين والإعدادات'
+                            : 'Wipe all operational data while strictly keeping user accounts, roles, and settings intact.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setResetConfirmationInput('')
+                        setResetModalOpen(true)
+                      }}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md transition-all active:scale-[0.98]"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>{settings.language === 'ar' ? 'إعادة ضبط البيانات' : 'Reset All Operational Data'}</span>
+                    </button>
+                  </div>
+
+                  {/* Warning Box */}
+                  <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs space-y-2 leading-relaxed">
+                    <div className="flex items-center gap-2 font-bold text-sm">
+                      <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>{settings.language === 'ar' ? 'تحذير هام جداً وقواعد العملية:' : 'Critical Warning & Process Rules:'}</span>
+                    </div>
+                    <ul className="list-disc list-inside space-y-1 ps-2">
+                      <li>
+                        {settings.language === 'ar'
+                          ? 'سيتم مسح جميع المنتجات، الأصناف، المخزون، المبيعات، المشتريات، المرتجعات، المصروفات، الورديات، حركات الخزينة، العملاء، والموردين.'
+                          : 'All products, inventory movements, sales, purchases, returns, expenses, cash shifts, customers, and suppliers will be wiped.'}
+                      </li>
+                      <li>
+                        <strong className="text-foreground">
+                          {settings.language === 'ar'
+                            ? 'حسابات المستخدمين (Users)، الصلاحيات (Permissions)، وإعدادات النظام (Settings) لن تُمَس وستبقى سليمة بالكامل.'
+                            : 'User accounts, permissions, and system settings will remain completely intact.'}
+                        </strong>
+                      </li>
+                      <li>
+                        {settings.language === 'ar'
+                          ? 'يقوم النظام تلقائياً بإنشاء نسخة احتياطية إجبارية سابقة للضبط (Pre-reset Backup) وحفظها في مجلد النسخ الاحتياطية قبل تنفيذ أي حذف.'
+                          : 'A mandatory pre-reset backup snapshot is automatically created before any deletion occurs.'}
+                      </li>
+                    </ul>
+                  </div>
+
+                  {/* Table Counts Preview */}
+                  <div className="space-y-3 pt-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-foreground flex items-center gap-2">
+                        <span>{settings.language === 'ar' ? 'الجداول التشغيلية وعدد السجلات الحالية:' : 'Operational Tables & Current Counts:'}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={loadOperationalCounts}
+                        disabled={loadingCounts}
+                        className="flex items-center gap-1 text-muted-foreground hover:text-foreground text-xs"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${loadingCounts ? 'animate-spin' : ''}`} />
+                        <span>{settings.language === 'ar' ? 'تحديث' : 'Refresh'}</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+                      {Object.entries(operationalCounts).map(([tbl, cnt]) => (
+                        <div
+                          key={tbl}
+                          className="p-2.5 rounded-xl bg-background border border-border flex items-center justify-between text-xs"
+                        >
+                          <span className="font-mono text-muted-foreground truncate" title={tbl}>
+                            {tbl}
+                          </span>
+                          <span
+                            className={`font-bold px-2 py-0.5 rounded-md ${
+                              cnt > 0
+                                ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                                : 'bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            {cnt}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Reset Confirmation Modal Dialog */}
+            {resetModalOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                <div className="bg-card border-2 border-rose-500/40 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-5">
+                  <div className="flex items-center gap-3 text-rose-600">
+                    <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30">
+                      <AlertTriangle className="w-6 h-6 text-rose-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-foreground">
+                        {settings.language === 'ar' ? 'تأكيد إعادة ضبط البيانات' : 'Confirm Operational Reset'}
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {settings.language === 'ar'
+                          ? 'إجراء غير قابل للتراجع (سيتم أخذ نسخة احتياطية أولاً)'
+                          : 'Irreversible action (pre-reset backup will be taken first)'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-muted-foreground space-y-2 leading-relaxed bg-muted/30 p-3.5 rounded-xl border border-border">
+                    <p className="font-semibold text-foreground">
+                      {settings.language === 'ar'
+                        ? 'لتأكيد المسح، يرجى كتابة كلمة RESET في الحقل أدناه:'
+                        : 'To confirm the reset, please type "RESET" in the box below:'}
+                    </p>
+                    <input
+                      type="text"
+                      value={resetConfirmationInput}
+                      onChange={(e) => setResetConfirmationInput(e.target.value)}
+                      placeholder="RESET"
+                      className="w-full h-10 px-3 rounded-lg bg-input border border-border text-center font-mono font-bold tracking-widest text-sm text-foreground focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-2.5 text-xs text-foreground cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={keepAuditLogsSetting}
+                      onChange={(e) => setKeepAuditLogsSetting(e.target.checked)}
+                      className="rounded border-border text-primary focus:ring-primary w-4 h-4"
+                    />
+                    <span>
+                      {settings.language === 'ar'
+                        ? 'الاحتفاظ بآخر 100 عملية في سجل المراقبة (Audit Logs)'
+                        : 'Keep last 100 entries in Audit Logs'}
+                    </span>
+                  </label>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+                    <button
+                      type="button"
+                      disabled={isResetting}
+                      onClick={() => setResetModalOpen(false)}
+                      className="px-4 py-2 rounded-xl border border-border text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
+                    >
+                      {t('common.cancel', 'إلغاء')}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={resetConfirmationInput.trim().toUpperCase() !== 'RESET' || isResetting}
+                      onClick={handleExecuteReset}
+                      className="flex items-center gap-2 px-5 py-2 rounded-xl bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition-all shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {isResetting && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                      <span>
+                        {isResetting
+                          ? (settings.language === 'ar' ? 'جاري النسخ والمسح...' : 'Resetting...')
+                          : (settings.language === 'ar' ? 'تأكيد المسح بالكامل' : 'Confirm & Wipe')}
+                      </span>
                     </button>
                   </div>
                 </div>
