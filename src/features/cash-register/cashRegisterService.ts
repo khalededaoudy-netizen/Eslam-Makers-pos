@@ -26,11 +26,35 @@ export interface UserContext {
 
 class CashRegisterService {
   /**
-   * Get all active cash registers
+   * Get all active cash registers (auto-creating default if none exist)
    */
   async getCashRegisters(): Promise<CashRegister[]> {
     const db = getDb()
-    return db.select<CashRegister[]>('SELECT * FROM cash_registers WHERE is_active = 1 ORDER BY created_at ASC')
+    let list = await db.select<CashRegister[]>('SELECT * FROM cash_registers WHERE is_active = 1 ORDER BY created_at ASC')
+    if (!list || list.length === 0) {
+      await this.ensureDefaultRegister()
+      list = await db.select<CashRegister[]>('SELECT * FROM cash_registers WHERE is_active = 1 ORDER BY created_at ASC')
+    }
+    return list
+  }
+
+  /**
+   * Ensure at least one active cash register exists
+   */
+  async ensureDefaultRegister(): Promise<CashRegister> {
+    const db = getDb()
+    const existing = await db.select<CashRegister[]>('SELECT * FROM cash_registers WHERE is_active = 1 ORDER BY created_at ASC LIMIT 1')
+    if (existing && existing.length > 0) {
+      return existing[0]
+    }
+    const newId = uuidv4()
+    await db.execute(
+      `INSERT INTO cash_registers (id, name, name_ar, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`,
+      [newId, 'Main POS', 'الخزينة الرئيسية']
+    )
+    const [created] = await db.select<CashRegister[]>('SELECT * FROM cash_registers WHERE id = ?', [newId])
+    return created
   }
 
   /**

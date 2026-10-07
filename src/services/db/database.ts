@@ -90,6 +90,7 @@ export async function initDatabase(): Promise<void> {
       console.warn('[initDatabase] PRAGMA initialization warning:', err)
     }
     await runMigrations()
+    await ensureDefaultRegister(db)
   } else {
     console.warn('⚠️ Running in browser preview without Tauri. Using in-memory MockDB.');
     db = new MockDB()
@@ -1172,7 +1173,30 @@ export async function seedInitialData(adminPasswordHash: string): Promise<void> 
     }
   }
 
+  // 11. Seed Default Cash Register idempotently
+  await ensureDefaultRegister(d)
+
   console.log('✅ Seed data applied idempotently.')
+}
+
+export async function ensureDefaultRegister(d: AppDatabase): Promise<void> {
+  try {
+    const rows = await d.select<{ c: number }[]>(
+      'SELECT COUNT(*) as c FROM cash_registers'
+    )
+    const count = rows && rows.length > 0 ? rows[0].c : 0
+
+    if (count === 0) {
+      await d.execute(
+        `INSERT INTO cash_registers (id, name, name_ar, is_active, created_at, updated_at)
+         VALUES (?, ?, ?, 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`,
+        [uuidv4(), 'Main POS', 'الخزينة الرئيسية']
+      )
+      console.log('[Seed] Created default cash register')
+    }
+  } catch (err) {
+    console.warn('[ensureDefaultRegister] Warning checking/seeding cash register:', err)
+  }
 }
 
 async function ensureDefaultPermissions(d: AppDatabase, roles: Array<{ id: string; name: string }>) {

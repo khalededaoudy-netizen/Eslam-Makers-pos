@@ -38,21 +38,38 @@ export function QuickShiftModal({
       setLoadingRegisters(true)
       cashRegisterService
         .getCashRegisters()
-        .then((list) => {
-          setRegisters(list)
-          if (list.length > 0) {
-            setSelectedRegisterId(list[0].id)
+        .then(async (list) => {
+          let active = list.filter((r) => r.is_active === 1)
+          if (active.length === 0) {
+            const def = await cashRegisterService.ensureDefaultRegister()
+            active = [def]
+          }
+          setRegisters(active)
+          if (active.length > 0) {
+            setSelectedRegisterId(active[0].id)
           }
         })
-        .catch((err) => {
+        .catch(async (err) => {
           console.error('Failed to load cash registers:', err)
-          setError(isArabic ? 'فشل تحميل قائمة الخزائن' : 'Failed to load registers')
+          try {
+            const def = await cashRegisterService.ensureDefaultRegister()
+            setRegisters([def])
+            setSelectedRegisterId(def.id)
+          } catch {
+            setError(isArabic ? 'فشل تحميل قائمة الخزائن' : 'Failed to load registers')
+          }
         })
         .finally(() => {
           setLoadingRegisters(false)
         })
     }
   }, [isOpen, isArabic])
+
+  useEffect(() => {
+    if (registers.length === 1) {
+      setSelectedRegisterId(registers[0].id)
+    }
+  }, [registers.length])
 
   if (!isOpen) return null
 
@@ -155,6 +172,21 @@ export function QuickShiftModal({
               <div className="h-10 flex items-center gap-2 px-3 bg-muted/30 border border-border rounded-xl text-xs text-muted-foreground">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 <span>{isArabic ? 'جاري تحميل الخزائن...' : 'Loading registers...'}</span>
+              </div>
+            ) : registers.length === 0 ? (
+              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{isArabic ? '⚠ لم يتم العثور على خزينة. سيتم إنشاؤها تلقائياً...' : '⚠ No cash register found. Creating automatically...'}</span>
+              </div>
+            ) : registers.length === 1 ? (
+              <div className="text-xs text-muted-foreground p-3 bg-muted/40 border border-border rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-2 font-bold text-foreground">
+                  <span className="text-sm">📍</span>
+                  <span>{isArabic ? registers[0].name_ar || registers[0].name : registers[0].name || registers[0].name_ar}</span>
+                </div>
+                <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-md font-medium">
+                  {isArabic ? 'الخزينة الرئيسية' : 'Main Register'}
+                </span>
               </div>
             ) : (
               <select

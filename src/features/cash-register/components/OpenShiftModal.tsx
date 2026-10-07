@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { X, Play, DollarSign, AlertCircle, Store } from 'lucide-react'
+import { X, Play, AlertCircle, Coins, Loader2 } from 'lucide-react'
 import { CashRegister, OpenShiftInput } from '../types'
+import { cashRegisterService } from '../cashRegisterService'
 
 interface OpenShiftModalProps {
   isOpen: boolean
@@ -19,16 +20,70 @@ export function OpenShiftModal({
   const { t, i18n } = useTranslation()
   const isArabic = i18n.language !== 'en'
 
-  const [registerId, setRegisterId] = useState(registers[0]?.id || '')
-  const [openingBalance, setOpeningBalance] = useState('0')
+  const [internalRegisters, setInternalRegisters] = useState<CashRegister[]>(registers)
+  const activeRegisters = (internalRegisters.length > 0 ? internalRegisters : registers).filter(
+    r => r.is_active === 1
+  )
+  const [registerId, setRegisterId] = useState(activeRegisters[0]?.id || '')
+  const [openingBalance, setOpeningBalance] = useState('')
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
+  const [loadingRegisters, setLoadingRegisters] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (isOpen) {
+      setError(null)
+      setOpeningBalance('')
+      setNotes('')
+      if (registers.length === 0) {
+        setLoadingRegisters(true)
+        cashRegisterService
+          .getCashRegisters()
+          .then((list) => {
+            setInternalRegisters(list)
+            if (list.length > 0) {
+              setRegisterId(list[0].id)
+            }
+          })
+          .catch(async (err) => {
+            console.error('Failed to load cash registers:', err)
+            try {
+              const def = await cashRegisterService.ensureDefaultRegister()
+              setInternalRegisters([def])
+              setRegisterId(def.id)
+            } catch {
+              setError(isArabic ? 'فشل تحميل قائمة الخزائن' : 'Failed to load registers')
+            }
+          })
+          .finally(() => {
+            setLoadingRegisters(false)
+          })
+      } else {
+        setInternalRegisters(registers)
+        const active = registers.filter(r => r.is_active === 1)
+        if (active.length > 0) {
+          setRegisterId(active[0].id)
+        }
+      }
+    }
+  }, [isOpen, registers, isArabic])
+
+  useEffect(() => {
+    if (activeRegisters.length === 1) {
+      setRegisterId(activeRegisters[0].id)
+    }
+  }, [activeRegisters.length])
 
   if (!isOpen) return null
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (openingBalance.trim() === '') {
+      setError(t('shift.openingBalanceRequired', isArabic ? 'الرصيد الافتتاحي مطلوب — يرجى إدخال المبلغ الموجود في الدرج' : 'Opening balance is required'))
+      return
+    }
+
     const balance = parseFloat(openingBalance)
     if (isNaN(balance) || balance < 0) {
       setError(t('cashRegister.invalidOpeningBalance', 'يرجى إدخال رصيد افتتاح صحيح أكبر من أو يساوي الصفر'))
@@ -94,36 +149,64 @@ export function OpenShiftModal({
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Register Select */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-foreground">
-              {t('cashRegister.selectRegister', 'الخزينة / نقطة البيع')} <span className="text-destructive">*</span>
+            <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+              <span>{t('cashRegister.selectRegister', 'الخزينة / نقطة البيع')}</span>
+              <span className="text-destructive">*</span>
             </label>
-            <select
-              value={registerId}
-              onChange={e => setRegisterId(e.target.value)}
-              className="w-full px-3 py-2 bg-background border border-input rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-              required
-            >
-              {registers.map(r => (
-                <option key={r.id} value={r.id}>
-                  {isArabic ? r.name_ar || r.name : r.name || r.name_ar} {r.code ? `(${r.code})` : ''}
-                </option>
-              ))}
-            </select>
+
+            {loadingRegisters ? (
+              <div className="h-10 flex items-center gap-2 px-3 bg-muted/30 border border-border rounded-xl text-xs text-muted-foreground">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>{isArabic ? 'جاري تحميل الخزائن...' : 'Loading registers...'}</span>
+              </div>
+            ) : activeRegisters.length === 0 ? (
+              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{isArabic ? '⚠ لم يتم العثور على خزينة. سيتم إنشاؤها تلقائياً...' : '⚠ No cash register found. Creating automatically...'}</span>
+              </div>
+            ) : activeRegisters.length === 1 ? (
+              <div className="text-xs text-muted-foreground p-3 bg-muted/40 border border-border rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-2 font-bold text-foreground">
+                  <span className="text-sm">📍</span>
+                  <span>{isArabic ? activeRegisters[0].name_ar || activeRegisters[0].name : activeRegisters[0].name || activeRegisters[0].name_ar}</span>
+                </div>
+                <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-md font-medium">
+                  {isArabic ? 'الخزينة الرئيسية' : 'Main Register'}
+                </span>
+              </div>
+            ) : (
+              <select
+                value={registerId}
+                onChange={e => setRegisterId(e.target.value)}
+                className="w-full px-3 py-2 bg-background border border-input rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                required
+              >
+                {activeRegisters.map(r => (
+                  <option key={r.id} value={r.id}>
+                    {isArabic ? r.name_ar || r.name : r.name || r.name_ar} {r.code ? `(${r.code})` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* Opening Balance */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-foreground">
-              {t('cashRegister.openingBalance', 'رصيد النقدية الافتتاحي بالدرج (ج.م)')} <span className="text-destructive">*</span>
+            <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Coins className="w-3.5 h-3.5 text-primary" />
+                <span>{t('cashRegister.openingBalance', 'رصيد النقدية الافتتاحي بالدرج (ج.م)')}</span>
+              </span>
+              <span className="text-destructive font-bold">*</span>
             </label>
             <input
               type="number"
               min="0"
-              step="10"
+              step="any"
               value={openingBalance}
               onChange={e => setOpeningBalance(e.target.value)}
-              placeholder="0"
-              className="w-full px-3 py-2.5 bg-background border border-input rounded-xl text-lg font-mono font-bold text-center focus:outline-none focus:ring-2 focus:ring-primary/40"
+              placeholder={t('shift.openingBalancePlaceholder', 'أدخل المبلغ الموجود في الدرج الآن')}
+              className="w-full px-3 py-2.5 bg-background border border-input rounded-xl text-lg font-mono font-bold text-center focus:outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground/60 placeholder:text-xs placeholder:font-normal"
               required
               autoFocus
             />
