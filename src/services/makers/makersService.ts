@@ -6,7 +6,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { AppDatabase } from '@/services/db/database'
 import { fetchMakersProducts, fetchMakersProductById } from './client'
-import { mapMakersProduct, isValidImageUrl, parseWebsitePrice } from './mapper'
+import { mapMakersProduct, isValidImageUrl, parseWebsitePrice, toMakersCdnUrl } from './mapper'
 import {
   MakersMappedProduct,
   MakersSearchResult,
@@ -454,8 +454,9 @@ export async function downloadMakersProductImage(
       const { invoke } = await import('@tauri-apps/api/core')
       const sanitizedSku = (skuOrId || `img_${Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, '_')
       const filename = `${sanitizedSku}_1.jpg`
+      const targetUrl = toMakersCdnUrl(imageUrl) || imageUrl
       const path = await invoke<string>('download_makers_image', {
-        imageUrl,
+        imageUrl: targetUrl,
         saveFilename: filename,
       })
       if (path && isValidImageUrl(path)) {
@@ -524,13 +525,18 @@ export async function importMakersProductDirect(
         : null
 
     if (targetImageUrl) {
+      console.log('[Import] Product:', product.name)
+      console.log('[Import] Image URL from API:', targetImageUrl)
       try {
+        console.log('[Import] Attempting download...')
         const downloadedLocalPath = await downloadMakersProductImage(targetImageUrl, product.sku || String(product.id))
+        console.log('[Import] Image saved to:', downloadedLocalPath)
         imagePath = (downloadedLocalPath && isValidImageUrl(downloadedLocalPath)) ? downloadedLocalPath : targetImageUrl
       } catch (imgErr) {
         console.warn('Image download attempt failed, saving remote URL fallback:', imgErr)
         imagePath = targetImageUrl
       }
+      console.log('[Import] Setting image_path:', imagePath)
     }
 
     // 5. Calculate prices (use overrides if provided)

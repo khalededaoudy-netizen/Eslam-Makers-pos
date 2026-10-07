@@ -34,6 +34,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { formatCurrency } from '@/lib/formatters'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { Banknote, Package } from 'lucide-react'
+import { ProductImage } from '@/components/common/ProductImage'
 
 interface MakersImportModalProps {
   isOpen: boolean
@@ -669,19 +670,12 @@ export function MakersImportModal({
 
                       {/* Thumbnail Image */}
                       <div className="w-14 h-14 rounded-lg bg-muted/80 border border-border flex items-center justify-center shrink-0 overflow-hidden p-0.5">
-                        {prod.imageUrl ? (
-                          <img
-                            src={prod.imageUrl}
-                            alt={prod.name}
-                            className="w-full h-full object-contain rounded"
-                            loading="lazy"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none'
-                            }}
-                          />
-                        ) : (
-                          <Cpu className="w-6 h-6 text-muted-foreground/30" />
-                        )}
+                        <ProductImage
+                          src={prod.imageUrl}
+                          alt={prod.name}
+                          className="w-full h-full object-contain rounded"
+                          fallbackType="cpu"
+                        />
                       </div>
 
                       {/* Info & Badges */}
@@ -753,10 +747,11 @@ export function MakersImportModal({
                 {/* Big Image Preview */}
                 <div className="w-full h-48 rounded-2xl bg-card border border-border flex items-center justify-center p-3 overflow-hidden shadow-inner">
                   {previewProduct.imageUrl ? (
-                    <img
+                    <ProductImage
                       src={previewProduct.imageUrl}
                       alt={previewProduct.name}
                       className="max-h-full max-w-full object-contain rounded-lg"
+                      fallbackType="package"
                     />
                   ) : (
                     <div className="flex flex-col items-center justify-center text-muted-foreground gap-2">

@@ -85,6 +85,31 @@ export function extractDatasheetUrl(descriptionHtml: string): string | null {
   return null
 }
 
+/** Convert direct makerselectronics uploads to Photon CDN URL to bypass anti-bot 403 challenge */
+export function toMakersCdnUrl(url?: string | null): string {
+  if (!url || typeof url !== 'string') return ''
+  let trimmed = url.trim()
+  if (!trimmed) return ''
+
+  if (trimmed.startsWith('https://makerselectronics.com/wp-content/uploads/')) {
+    return trimmed.replace('https://makerselectronics.com/', 'https://i0.wp.com/makerselectronics.com/')
+  }
+  if (trimmed.startsWith('https://www.makerselectronics.com/wp-content/uploads/')) {
+    return trimmed.replace('https://www.makerselectronics.com/', 'https://i0.wp.com/makerselectronics.com/')
+  }
+  if (trimmed.startsWith('http://makerselectronics.com/wp-content/uploads/')) {
+    return trimmed.replace('http://makerselectronics.com/', 'https://i0.wp.com/makerselectronics.com/')
+  }
+  if (trimmed.startsWith('http://www.makerselectronics.com/wp-content/uploads/')) {
+    return trimmed.replace('http://www.makerselectronics.com/', 'https://i0.wp.com/makerselectronics.com/')
+  }
+  // Relative WordPress upload path
+  if (trimmed.startsWith('/wp-content/uploads/')) {
+    return `https://i0.wp.com/makerselectronics.com${trimmed}`
+  }
+  return trimmed
+}
+
 /** Validate if an image URL/path is usable and not empty or a dummy string */
 export function isValidImageUrl(url?: string | null): boolean {
   if (!url || typeof url !== 'string') return false
@@ -97,7 +122,8 @@ export function isValidImageUrl(url?: string | null): boolean {
     trimmed.startsWith('http://') ||
     trimmed.startsWith('https://') ||
     trimmed.startsWith('data:image/') ||
-    trimmed.startsWith('asset://')
+    trimmed.startsWith('asset://') ||
+    trimmed.startsWith('/wp-content/uploads/')
   ) {
     return true
   }
@@ -133,11 +159,11 @@ export function mapMakersProduct(raw: MakersApiProduct): MakersMappedProduct {
     for (const item of raw.images) {
       const img = item as any
       if (typeof img === 'string' && isValidImageUrl(img)) {
-        extractedImages.push(img.trim())
+        extractedImages.push(toMakersCdnUrl(img))
       } else if (img && typeof img === 'object') {
-        const candidate = img.src || img.url || img.thumbnail || ''
+        const candidate = img.src || img.source_url || img.url || img.thumbnail || ''
         if (isValidImageUrl(candidate)) {
-          extractedImages.push(String(candidate).trim())
+          extractedImages.push(toMakersCdnUrl(String(candidate)))
         }
       }
     }
@@ -147,11 +173,11 @@ export function mapMakersProduct(raw: MakersApiProduct): MakersMappedProduct {
   if (extractedImages.length === 0) {
     const singleImg = (raw as any).image || (raw as any).featured_image
     if (typeof singleImg === 'string' && isValidImageUrl(singleImg)) {
-      extractedImages.push(singleImg.trim())
+      extractedImages.push(toMakersCdnUrl(singleImg))
     } else if (singleImg && typeof singleImg === 'object') {
-      const candidate = singleImg.src || singleImg.url || singleImg.thumbnail || ''
+      const candidate = singleImg.src || singleImg.source_url || singleImg.url || singleImg.thumbnail || ''
       if (isValidImageUrl(candidate)) {
-        extractedImages.push(String(candidate).trim())
+        extractedImages.push(toMakersCdnUrl(String(candidate)))
       }
     }
   }

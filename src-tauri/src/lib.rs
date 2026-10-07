@@ -31,15 +31,38 @@ async fn fetch_makers_url(url: String) -> Result<String, String> {
     Ok(body)
 }
 
+fn is_allowed_makers_image_domain(url: &str) -> bool {
+    let lower = url.to_lowercase();
+    // Official MAKERS domains
+    if lower.starts_with("https://makerselectronics.com/") 
+        || lower.starts_with("https://www.makerselectronics.com/")
+        || lower.starts_with("http://makerselectronics.com/")
+        || lower.starts_with("http://www.makerselectronics.com/") {
+        return true;
+    }
+    // WordPress CDN / Photon CDN (i0.wp.com, i1.wp.com, etc. used by Automattic/Pressable hosting)
+    if lower.starts_with("https://i0.wp.com/")
+        || lower.starts_with("https://i1.wp.com/")
+        || lower.starts_with("https://i2.wp.com/")
+        || lower.starts_with("https://i3.wp.com/")
+        || lower.starts_with("https://wp.com/") {
+        return true;
+    }
+    // Gravatar and other WordPress image assets
+    if lower.starts_with("https://secure.gravatar.com/") || lower.starts_with("https://gravatar.com/") {
+        return true;
+    }
+    false
+}
+
 #[tauri::command]
 async fn download_makers_image(
     app: tauri::AppHandle,
     image_url: String,
     save_filename: String,
 ) -> Result<String, String> {
-    // Only allow makerselectronics.com domain for strict security
-    if !image_url.starts_with("https://makerselectronics.com/") && !image_url.starts_with("https://www.makerselectronics.com/") {
-        return Err("Security Error: Only makerselectronics.com image URLs are permitted".to_string());
+    if !is_allowed_makers_image_domain(&image_url) {
+        return Err(format!("Security Error: Domain for image URL '{}' is not permitted", image_url));
     }
 
     // Determine target directory: %APPDATA%/com.makers.pos/product_images/
@@ -63,26 +86,62 @@ async fn download_makers_image(
     let file_path = target_dir.join(&clean_filename);
 
     let client = reqwest::Client::builder()
-        .user_agent("MAKERS-POS-Desktop/1.0")
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         .timeout(std::time::Duration::from_secs(20))
         .build()
         .map_err(|e| e.to_string())?;
 
-    let resp = client.get(&image_url)
-        .send()
-        .await
-        .map_err(|e| format!("Network error downloading image: {}", e))?;
+    // Prepare candidate URLs:
+    // If it's a makerselectronics.com upload, direct requests are blocked by Pressable _hcc anti-bot challenge (403),
+    // but the official WordPress Photon CDN (i0.wp.com) serves the file with 200 OK.
+    let mut candidate_urls = Vec::new();
+    if image_url.contains("makerselectronics.com/wp-content/uploads/") && !image_url.contains("i0.wp.com") {
+        let photon_url = image_url
+            .replace("https://makerselectronics.com/", "https://i0.wp.com/makerselectronics.com/")
+            .replace("https://www.makerselectronics.com/", "https://i0.wp.com/makerselectronics.com/")
+            .replace("http://makerselectronics.com/", "https://i0.wp.com/makerselectronics.com/");
+        candidate_urls.push(photon_url);
+    }
+    candidate_urls.push(image_url.clone());
 
-    let status = resp.status();
-    if !status.is_success() {
-        return Err(format!("HTTP Error {}: Failed to download image", status.as_u16()));
+    let mut last_err = String::new();
+    for url in candidate_urls {
+        match client.get(&url)
+            .header("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+            .header("Referer", "https://makerselectronics.com/")
+            .send()
+            .await 
+        {
+            Ok(resp) => {
+                let status = resp.status();
+                if status.is_success() {
+                    match resp.bytes().await {
+                        Ok(bytes) => {
+                            if !bytes.is_empty() {
+                                if let Err(e) = fs::write(&file_path, bytes) {
+                                    return Err(format!("Failed to write image file: {}", e));
+                                }
+                                let abs_path_str = file_path.to_string_lossy().to_string();
+                                return Ok(abs_path_str);
+                            } else {
+                                last_err = format!("Empty bytes received from {}", url);
+                            }
+                        }
+                        Err(e) => {
+                            last_err = format!("Failed to read image bytes from {}: {}", url, e);
+                        }
+                    }
+                } else {
+                    last_err = format!("HTTP Error {} from {}", status.as_u16(), url);
+                }
+            }
+            Err(e) => {
+                last_err = format!("Network error downloading from {}: {}", url, e);
+            }
+        }
     }
 
-    let bytes = resp.bytes().await.map_err(|e| format!("Failed to read image bytes: {}", e))?;
-    fs::write(&file_path, bytes).map_err(|e| format!("Failed to write image file: {}", e))?;
-
-    let abs_path_str = file_path.to_string_lossy().to_string();
-    Ok(abs_path_str)
+    Err(format!("Failed to download image: {}", last_err))
 }
 
 #[tauri::command]

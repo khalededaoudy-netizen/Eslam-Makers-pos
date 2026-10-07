@@ -12,7 +12,7 @@ interface ProductImageProps {
 
 function resolveImageSrc(src?: string | null): string | null {
   if (!src) return null
-  const trimmed = src.trim()
+  let trimmed = src.trim()
   if (!trimmed || trimmed === 'null' || trimmed === 'undefined' || trimmed === 'NaN') return null
 
   // If already http/https or data url or asset URL
@@ -22,7 +22,21 @@ function resolveImageSrc(src?: string | null): string | null {
     trimmed.startsWith('data:') ||
     trimmed.startsWith('asset://')
   ) {
+    if (trimmed.startsWith('https://makerselectronics.com/wp-content/uploads/')) {
+      return trimmed.replace('https://makerselectronics.com/', 'https://i0.wp.com/makerselectronics.com/')
+    }
+    if (trimmed.startsWith('https://www.makerselectronics.com/wp-content/uploads/')) {
+      return trimmed.replace('https://www.makerselectronics.com/', 'https://i0.wp.com/makerselectronics.com/')
+    }
+    if (trimmed.startsWith('http://makerselectronics.com/wp-content/uploads/')) {
+      return trimmed.replace('http://makerselectronics.com/', 'https://i0.wp.com/makerselectronics.com/')
+    }
     return trimmed
+  }
+
+  // Relative WordPress upload path
+  if (trimmed.startsWith('/wp-content/uploads/')) {
+    return `https://i0.wp.com/makerselectronics.com${trimmed}`
   }
 
   // If local absolute file path

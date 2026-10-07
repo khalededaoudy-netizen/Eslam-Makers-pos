@@ -12,7 +12,7 @@ import { productService } from '@/services/products/productService'
 import { auditService } from '@/services/audit/auditService'
 import { makersService } from '@/services/makers'
 import { resolveOrCreateCategory } from '@/services/makers/makersService'
-import { extractFootprintPackage, extractDatasheetUrl } from '@/services/makers/mapper'
+import { extractFootprintPackage, extractDatasheetUrl, toMakersCdnUrl } from '@/services/makers/mapper'
 
 export interface SmartImportRow {
   rowNumber: number
@@ -196,27 +196,33 @@ export async function importFromExcel(
       }
 
       // 7. Download main image
-      if (detail.images && detail.images.length > 0) {
+      console.log('[Import] Product:', detail.name)
+      const rawImgUrl = detail.images?.[0]?.src || (typeof detail.images?.[0] === 'string' ? detail.images[0] : null)
+      console.log('[Import] Image URL from API:', rawImgUrl)
+
+      if (rawImgUrl) {
         try {
-          const imgSrc = detail.images[0]?.src || (typeof detail.images[0] === 'string' ? detail.images[0] : null)
-          if (imgSrc) {
-            const filename = `${detail.sku || `MKR_${Date.now()}`}_1.jpg`
-            const isTauriEnv = typeof window !== 'undefined' && ('__TAURI__' in window || '__TAURI_INTERNALS__' in window)
-            if (isTauriEnv) {
-              const { invoke } = await import('@tauri-apps/api/core')
-              const savedPath = await invoke<string>('download_makers_image', {
-                imageUrl: imgSrc,
-                saveFilename: filename,
-              })
-              productData.image_path = savedPath
-            } else {
-              productData.image_path = imgSrc
-            }
+          const imgSrc = toMakersCdnUrl(rawImgUrl) || rawImgUrl
+          console.log('[Import] Attempting download...')
+          const filename = `${detail.sku || `MKR_${Date.now()}`}_1.jpg`
+          const isTauriEnv = typeof window !== 'undefined' && ('__TAURI__' in window || '__TAURI_INTERNALS__' in window)
+          if (isTauriEnv) {
+            const { invoke } = await import('@tauri-apps/api/core')
+            const savedPath = await invoke<string>('download_makers_image', {
+              imageUrl: imgSrc,
+              saveFilename: filename,
+            })
+            console.log('[Import] Image saved to:', savedPath)
+            productData.image_path = savedPath
+          } else {
+            productData.image_path = imgSrc
           }
         } catch (imgErr) {
-          console.warn('Image download failed:', imgErr)
+          console.warn('[Import] Image download failed:', imgErr)
+          productData.image_path = toMakersCdnUrl(rawImgUrl) || rawImgUrl
         }
       }
+      console.log('[Import] Setting image_path:', productData.image_path)
 
       // 8. Save product
       const product = await productService.create(productData, { id: userId })
