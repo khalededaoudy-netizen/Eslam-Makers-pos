@@ -91,6 +91,7 @@ export interface PosShiftInfo {
   isOpen: boolean
   shiftId?: string | null
   registerId?: string | null
+  registerName?: string | null
   openedAt?: string | null
   openingBalance?: number
 }

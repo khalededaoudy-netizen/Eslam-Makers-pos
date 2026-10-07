@@ -268,19 +268,20 @@ class PosService {
    */
   async getActiveShift(userId?: string): Promise<PosShiftInfo> {
     const db = getDb()
-    const conditions = ["status = 'open'"]
+    const conditions = ["s.status = 'open'"]
     const params: unknown[] = []
 
     if (userId) {
-      conditions.push('user_id = ?')
+      conditions.push('s.user_id = ?')
       params.push(userId)
     }
 
-    const rows = await db.select<Array<{ id: string; register_id: string; opened_at: string; opening_balance: number }>>(`
-      SELECT id, register_id, opened_at, opening_balance
-      FROM shifts
+    const rows = await db.select<Array<{ id: string; register_id: string; opened_at: string; opening_balance: number; register_name: string | null }>>(`
+      SELECT s.id, s.register_id, s.opened_at, s.opening_balance, cr.name as register_name
+      FROM shifts s
+      LEFT JOIN cash_registers cr ON cr.id = s.register_id
       WHERE ${conditions.join(' AND ')}
-      ORDER BY opened_at DESC
+      ORDER BY s.opened_at DESC
       LIMIT 1
     `, params)
 
@@ -289,17 +290,19 @@ class PosService {
         isOpen: true,
         shiftId: rows[0].id,
         registerId: rows[0].register_id,
+        registerName: rows[0].register_name,
         openedAt: rows[0].opened_at,
         openingBalance: rows[0].opening_balance,
       }
     }
 
     // Check if any shift is open globally if no user-specific shift
-    const anyRows = await db.select<Array<{ id: string; register_id: string; opened_at: string; opening_balance: number }>>(`
-      SELECT id, register_id, opened_at, opening_balance
-      FROM shifts
-      WHERE status = 'open'
-      ORDER BY opened_at DESC
+    const anyRows = await db.select<Array<{ id: string; register_id: string; opened_at: string; opening_balance: number; register_name: string | null }>>(`
+      SELECT s.id, s.register_id, s.opened_at, s.opening_balance, cr.name as register_name
+      FROM shifts s
+      LEFT JOIN cash_registers cr ON cr.id = s.register_id
+      WHERE s.status = 'open'
+      ORDER BY s.opened_at DESC
       LIMIT 1
     `)
 
@@ -308,6 +311,7 @@ class PosService {
         isOpen: true,
         shiftId: anyRows[0].id,
         registerId: anyRows[0].register_id,
+        registerName: anyRows[0].register_name,
         openedAt: anyRows[0].opened_at,
         openingBalance: anyRows[0].opening_balance,
       }

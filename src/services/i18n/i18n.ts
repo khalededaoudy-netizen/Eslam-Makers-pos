@@ -1076,6 +1076,24 @@ const arTranslation = {
         retryFailed: 'إعادة المحاولة',
         downloadTemplate: 'تحميل قالب Excel',
         priceNote: 'السعر اللي تكتبه هو اللي هيتسجل — مش سعر الموقع'
+    },
+    shift: {
+        openNew: 'فتح وردية جديدة',
+        openNow: 'فتح الوردية',
+        closeNow: 'إغلاق الوردية',
+        noShift: 'لا توجد وردية مفتوحة حالياً',
+        shiftOpen: 'وردية مفتوحة',
+        openingBalance: 'رصيد افتتاحي',
+        openingBalancePlaceholder: 'أدخل المبلغ الموجود في الدرج الآن',
+        actualBalance: 'الرصيد الفعلي',
+        expectedBalance: 'الرصيد المتوقع',
+        difference: 'الفرق',
+        surplus: 'فائض',
+        shortage: 'نقص',
+        matched: 'مطابق',
+        shiftOpened: 'تم فتح الوردية بنجاح',
+        shiftClosed: 'تم إغلاق الوردية',
+        mustOpenShiftFirst: 'يجب فتح وردية أولاً'
     }
 };
 
@@ -2154,6 +2172,24 @@ const enTranslation = {
         retryFailed: 'Retry Failed',
         downloadTemplate: 'Download Excel Template',
         priceNote: 'The price you enter will be saved — not the website price'
+    },
+    shift: {
+        openNew: 'Open New Shift',
+        openNow: 'Open Shift',
+        closeNow: 'Close Shift',
+        noShift: 'No open shift currently',
+        shiftOpen: 'Shift Open',
+        openingBalance: 'Opening Balance',
+        openingBalancePlaceholder: 'Enter the cash amount in drawer now',
+        actualBalance: 'Actual Balance',
+        expectedBalance: 'Expected Balance',
+        difference: 'Difference',
+        surplus: 'Surplus',
+        shortage: 'Shortage',
+        matched: 'Matched',
+        shiftOpened: 'Shift opened successfully',
+        shiftClosed: 'Shift closed',
+        mustOpenShiftFirst: 'You must open a shift first'
     }
 };
 

@@ -48,6 +48,8 @@ import { CartSummary } from './components/CartSummary'
 import { HeldCartsModal } from './components/HeldCartsModal'
 import { CheckoutModal } from '@/features/sales/components/CheckoutModal'
 import { ReceiptModal } from '@/features/sales/components/ReceiptModal'
+import { QuickShiftModal } from './components/QuickShiftModal'
+import { QuickCloseShiftModal } from './components/QuickCloseShiftModal'
 import { salesService } from '@/features/sales/salesService'
 import { ReceiptData, CreateSalePaymentInput } from '@/features/sales/types'
 import { formatCurrency } from '@/lib/formatters'
@@ -71,6 +73,8 @@ export function PosPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [shiftInfo, setShiftInfo] = useState<PosShiftInfo>({ isOpen: true })
   const [checkingShift, setCheckingShift] = useState(true)
+  const [showOpenShiftModal, setShowOpenShiftModal] = useState(false)
+  const [showCloseShiftModal, setShowCloseShiftModal] = useState(false)
 
   // Held Carts, Customer Lookup & Checkout
   const [heldCarts, setHeldCarts] = useState<HeldCart[]>([])
@@ -511,9 +515,32 @@ export function PosPage() {
       )}
 
       {!checkingShift && !shiftInfo.isOpen && (
-        <div className="bg-destructive/15 border-b border-destructive/30 px-6 py-2 text-destructive text-xs font-bold flex items-center gap-2 shrink-0">
-          <ShieldAlert className="w-4 h-4 shrink-0" />
-          <span>{t('pos.noShiftWarning', 'تنبيه: لا توجد وردية مفتوحة للكاشير. افتح وردية من قسم الخزينة لتسجيل المبيعات.')}</span>
+        <div className="bg-red-500/10 border-b border-red-500/20 p-3 text-red-600 dark:text-red-400 text-sm font-bold flex items-center justify-center gap-3 shrink-0 animate-fade-in">
+          <span>⚠ {t('shift.noShift', 'لا توجد وردية مفتوحة حالياً')}</span>
+          <button
+            type="button"
+            onClick={() => setShowOpenShiftModal(true)}
+            className="px-3.5 py-1.5 bg-primary text-primary-foreground text-xs font-black rounded-lg hover:bg-primary/90 transition shadow-sm flex items-center gap-1.5 cursor-pointer"
+          >
+            <span>🟢</span>
+            <span>{t('shift.openNew', 'فتح وردية جديدة')}</span>
+          </button>
+        </div>
+      )}
+
+      {!checkingShift && shiftInfo.isOpen && (
+        <div className="bg-green-500/10 border-b border-green-500/20 p-2 text-green-700 dark:text-green-400 text-xs font-semibold flex items-center justify-between shrink-0 animate-fade-in">
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>🟢 {t('shift.shiftOpen', 'وردية مفتوحة')} — {shiftInfo.registerName || t('pos.cashier', 'الكاشير')}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowCloseShiftModal(true)}
+            className="px-3 py-1 bg-card border border-green-500/30 text-green-700 dark:text-green-300 text-xs font-bold rounded-lg hover:bg-green-500/20 transition shadow-sm cursor-pointer"
+          >
+            {t('shift.closeNow', 'إغلاق الوردية')}
+          </button>
         </div>
       )}
 
@@ -845,7 +872,7 @@ export function PosPage() {
                 disabled={cart.items.length === 0 || !shiftInfo.isOpen}
                 onClick={handleOpenCheckout}
                 className="flex-[2] h-11 rounded-xl bg-primary text-primary-foreground font-black text-sm hover:bg-primary/90 transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
-                title="Shortcut: F4"
+                title={!shiftInfo.isOpen ? t('shift.mustOpenShiftFirst', 'يجب فتح وردية أولاً') : "Shortcut: F4"}
               >
                 <ShoppingCart className="w-4 h-4" />
                 <span>{t('pos.checkout', 'الدفع والتحصيل')} ({formatCurrency(totals.total, currencySymbol)})</span>
@@ -932,6 +959,29 @@ export function PosPage() {
         description={t('pos.confirmOverwriteActiveCart', 'توجد أصناف في السلة الحالية. هل تريد استبدالها بالفاتورة المعلقة؟')}
         confirmText={t('common.confirm', 'استبدال')}
       />
+
+      {/* Quick Open Shift Modal */}
+      <QuickShiftModal
+        isOpen={showOpenShiftModal}
+        onClose={() => setShowOpenShiftModal(false)}
+        onShiftOpened={() => {
+          refreshShiftAndHeld()
+        }}
+        onToast={(msg, type) => setFeedback({ type: type || 'success', message: msg })}
+      />
+
+      {/* Quick Close Shift Modal */}
+      {shiftInfo.shiftId && (
+        <QuickCloseShiftModal
+          isOpen={showCloseShiftModal}
+          shiftId={shiftInfo.shiftId}
+          onClose={() => setShowCloseShiftModal(false)}
+          onShiftClosed={() => {
+            refreshShiftAndHeld()
+          }}
+          onToast={(msg, type) => setFeedback({ type: type || 'success', message: msg })}
+        />
+      )}
     </div>
   )
 }
