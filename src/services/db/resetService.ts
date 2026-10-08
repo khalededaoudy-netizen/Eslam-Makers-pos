@@ -126,12 +126,20 @@ export async function resetOperationalData(options: {
     }
   }
 
-  // 3. Ensure default cash register exists after operational reset
+  // 3. Ensure default cash register, units, and brand exist after operational reset
   try {
     const { cashRegisterService } = await import('@/features/cash-register/cashRegisterService')
     await cashRegisterService.ensureDefaultRegister()
   } catch (regErr) {
     console.warn('[resetService] Failed to ensure default cash register after reset:', regErr)
+  }
+
+  try {
+    const { ensureDefaultUnits, ensureDefaultBrand } = await import('./database')
+    await ensureDefaultUnits(db)
+    await ensureDefaultBrand(db)
+  } catch (seedErr) {
+    console.warn('[resetService] Failed to ensure default units and brand after reset:', seedErr)
   }
 
   // Log to audit service

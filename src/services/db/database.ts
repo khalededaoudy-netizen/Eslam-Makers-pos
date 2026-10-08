@@ -91,6 +91,8 @@ export async function initDatabase(): Promise<void> {
     }
     await runMigrations()
     await ensureDefaultRegister(db)
+    await ensureDefaultUnits(db)
+    await ensureDefaultBrand(db)
   } else {
     console.warn('⚠️ Running in browser preview without Tauri. Using in-memory MockDB.');
     db = new MockDB()
@@ -1014,32 +1016,10 @@ export async function seedInitialData(adminPasswordHash: string): Promise<void> 
   await ensureDefaultPermissions(d, roles)
 
   // 4. Seed Default Units idempotently
-  const existingUnits = await d.select<{ id: string; symbol: string; name_en: string }[]>('SELECT id, symbol, name_en FROM product_units')
-  const unitSymbols = new Set(existingUnits.map(u => (u.symbol || '').toLowerCase().trim()))
-  const unitNames = new Set(existingUnits.map(u => (u.name_en || '').toLowerCase().trim()))
+  await ensureDefaultUnits(d)
 
-  const units = [
-    { nameAr: 'قطعة', nameEn: 'Piece', symbol: 'pcs', allowDecimal: 0 },
-    { nameAr: 'متر', nameEn: 'Meter', symbol: 'm', allowDecimal: 1 },
-    { nameAr: 'حزمة', nameEn: 'Pack', symbol: 'pk', allowDecimal: 0 },
-    { nameAr: 'طقم', nameEn: 'Set', symbol: 'set', allowDecimal: 0 },
-    { nameAr: 'لفة', nameEn: 'Roll', symbol: 'roll', allowDecimal: 0 },
-    { nameAr: 'علبة', nameEn: 'Box', symbol: 'box', allowDecimal: 0 },
-    { nameAr: 'زوج', nameEn: 'Pair', symbol: 'pr', allowDecimal: 0 },
-    { nameAr: 'جرام', nameEn: 'Gram', symbol: 'g', allowDecimal: 1 },
-    { nameAr: 'كيلوجرام', nameEn: 'Kilogram', symbol: 'kg', allowDecimal: 1 },
-  ]
-
-  for (const u of units) {
-    if (!unitSymbols.has(u.symbol.toLowerCase().trim()) && !unitNames.has(u.nameEn.toLowerCase().trim())) {
-      await d.execute(
-        `INSERT INTO product_units (id, name_ar, name_en, symbol, allow_decimal)
-         VALUES (?, ?, ?, ?, ?)`,
-        [uuidv4(), u.nameAr, u.nameEn, u.symbol, u.allowDecimal]
-      )
-      unitSymbols.add(u.symbol.toLowerCase().trim())
-    }
-  }
+  // 4b. Seed Default Brand idempotently
+  await ensureDefaultBrand(d)
 
   // 5. Seed Official MAKERS 35 Master Categories idempotently
   const existingCats = await d.select<{ id: string; name_ar: string; name_en: string }[]>('SELECT id, name_ar, name_en FROM product_categories')
@@ -1208,6 +1188,64 @@ export async function ensureDefaultRegister(d: AppDatabase): Promise<void> {
     }
   } catch (err) {
     console.warn('[ensureDefaultRegister] Warning checking/seeding cash register:', err)
+  }
+}
+
+export async function ensureDefaultUnits(d?: AppDatabase): Promise<void> {
+  try {
+    const database = d || getDb()
+    const rows = await database.select<{ c: number }[]>(
+      'SELECT COUNT(*) as c FROM product_units'
+    )
+    const count = rows && rows.length > 0 ? rows[0].c : 0
+
+    if (count > 0) return
+
+    const defaultUnits = [
+      { name_ar: 'قطعة', name_en: 'Piece', symbol: 'pc', allow_decimal: 0 },
+      { name_ar: 'متر', name_en: 'Meter', symbol: 'm', allow_decimal: 1 },
+      { name_ar: 'سنتيمتر', name_en: 'Centimeter', symbol: 'cm', allow_decimal: 1 },
+      { name_ar: 'كيلوجرام', name_en: 'Kilogram', symbol: 'kg', allow_decimal: 1 },
+      { name_ar: 'جرام', name_en: 'Gram', symbol: 'g', allow_decimal: 1 },
+      { name_ar: 'لتر', name_en: 'Liter', symbol: 'L', allow_decimal: 1 },
+      { name_ar: 'علبة', name_en: 'Box', symbol: 'box', allow_decimal: 0 },
+      { name_ar: 'حزمة', name_en: 'Pack', symbol: 'pack', allow_decimal: 0 },
+      { name_ar: 'رول', name_en: 'Roll', symbol: 'roll', allow_decimal: 1 },
+      { name_ar: 'شريحة', name_en: 'Strip', symbol: 'strip', allow_decimal: 0 },
+    ]
+
+    for (const unit of defaultUnits) {
+      await database.execute(
+        `INSERT INTO product_units (id, name_ar, name_en, symbol, allow_decimal, is_active, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`,
+        [uuidv4(), unit.name_ar, unit.name_en, unit.symbol, unit.allow_decimal]
+      )
+    }
+
+    console.log('[Seed] Created default units:', defaultUnits.length)
+  } catch (err) {
+    console.warn('[ensureDefaultUnits] Warning checking/seeding units:', err)
+  }
+}
+
+export async function ensureDefaultBrand(d?: AppDatabase): Promise<void> {
+  try {
+    const database = d || getDb()
+    const rows = await database.select<{ c: number }[]>(
+      'SELECT COUNT(*) as c FROM brands'
+    )
+    const count = rows && rows.length > 0 ? rows[0].c : 0
+
+    if (count === 0) {
+      await database.execute(
+        `INSERT INTO brands (id, name, is_active, created_at, updated_at)
+         VALUES (?, ?, 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`,
+        [uuidv4(), 'عام (General)']
+      )
+      console.log('[Seed] Created default brand: عام (General)')
+    }
+  } catch (err) {
+    console.warn('[ensureDefaultBrand] Warning checking/seeding brand:', err)
   }
 }
 

@@ -706,7 +706,13 @@ class ProductService {
 
   async getBrands(): Promise<BrandItem[]> {
     const db = getDb()
-    return db.select<BrandItem[]>('SELECT * FROM brands WHERE is_active = 1 ORDER BY name ASC')
+    let brands = await db.select<BrandItem[]>('SELECT * FROM brands WHERE is_active = 1 ORDER BY name ASC')
+    if (!brands || brands.length === 0) {
+      const { ensureDefaultBrand } = await import('@/services/db/database')
+      await ensureDefaultBrand(db)
+      brands = await db.select<BrandItem[]>('SELECT * FROM brands WHERE is_active = 1 ORDER BY name ASC')
+    }
+    return brands
   }
 
   async createBrand(name: string, user?: { id?: string; fullName?: string }): Promise<BrandItem> {
@@ -838,7 +844,13 @@ class ProductService {
 
   async getUnits(): Promise<UnitItem[]> {
     const db = getDb()
-    return db.select<UnitItem[]>('SELECT * FROM product_units ORDER BY name_ar ASC')
+    let units = await db.select<UnitItem[]>('SELECT * FROM product_units WHERE is_active = 1 ORDER BY name_ar ASC')
+    if (!units || units.length === 0) {
+      const { ensureDefaultUnits } = await import('@/services/db/database')
+      await ensureDefaultUnits(db)
+      units = await db.select<UnitItem[]>('SELECT * FROM product_units WHERE is_active = 1 ORDER BY name_ar ASC')
+    }
+    return units
   }
 
   async createUnit(

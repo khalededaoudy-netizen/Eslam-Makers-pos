@@ -139,9 +139,35 @@ export function ProductForm({ initialData, onClose, onSaved }: ProductFormProps)
       setAttributeDefs(defs)
       setSuppliers(sups)
 
-      // If adding new and unit not set, pick default unit
-      if (!isEditing && !formData.unit_id && uns.length > 0) {
-        setFormData((prev) => ({ ...prev, unit_id: uns[0].id }))
+      // Auto-select default unit (Piece / قطعة) for new products
+      let effectiveUnits = uns
+      if (effectiveUnits.length === 0) {
+        try {
+          const fallbackId = await productService.createUnit({
+            nameAr: 'قطعة',
+            nameEn: 'Piece',
+            symbol: 'pc',
+            allowDecimal: false,
+          })
+          effectiveUnits = await productService.getUnits()
+          setUnits(effectiveUnits)
+          if (!isEditing && !formData.unit_id) {
+            setFormData((prev) => ({ ...prev, unit_id: fallbackId }))
+          }
+        } catch (unitFallbackErr) {
+          console.warn('Failed to auto-create fallback unit:', unitFallbackErr)
+        }
+      } else if (!isEditing && !formData.unit_id) {
+        const defaultUnit =
+          effectiveUnits.find(
+            (u) =>
+              u.symbol?.toLowerCase() === 'pc' ||
+              u.name_ar === 'قطعة' ||
+              u.name_en?.toLowerCase() === 'piece'
+          ) || effectiveUnits[0]
+        if (defaultUnit) {
+          setFormData((prev) => ({ ...prev, unit_id: defaultUnit.id }))
+        }
       }
 
       // If editing, load product barcodes and attribute values
@@ -681,15 +707,21 @@ export function ProductForm({ initialData, onClose, onSaved }: ProductFormProps)
                       {t('common.unit')} <span className="text-destructive">*</span>
                     </label>
                     <select
+                      id="product-unit-select"
                       value={formData.unit_id}
                       onChange={(e) => setFormData({ ...formData, unit_id: e.target.value })}
                       className="w-full h-10 px-3 rounded-lg bg-input border border-border focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                      required
                     >
-                      {units.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.name_ar} ({u.symbol})
-                        </option>
-                      ))}
+                      {units.length === 0 ? (
+                        <option value="">{t('common.noUnits', 'لا توجد وحدات — يرجى الانتظار...')}</option>
+                      ) : (
+                        units.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.name_ar} ({u.symbol})
+                          </option>
+                        ))
+                      )}
                     </select>
                   </div>
 
