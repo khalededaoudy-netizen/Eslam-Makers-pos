@@ -37,6 +37,8 @@ export function CategoriesPage() {
 
   const [categories, setCategories] = useState<CategoryWithCount[]>([])
   const [searchQuery, setSearchQuery] = useState('')
+  const [filterType, setFilterType] = useState<'all' | 'makers' | 'custom'>('all')
+  const [productStats, setProductStats] = useState({ total: 0, withCategory: 0 })
   const [isEditing, setIsEditing] = useState<string | null>(null)
   const [form, setForm] = useState({ name_ar: '', name_en: '', parent_id: '', icon: 'folder', color: '#3b82f6' })
   const [loading, setLoading] = useState(false)
@@ -59,8 +61,12 @@ export function CategoriesPage() {
 
   async function loadCategories() {
     try {
-      const cats = await makersCategoryService.getCategoriesWithCounts()
+      const [cats, pStats] = await Promise.all([
+        makersCategoryService.getCategoriesWithCounts(),
+        makersCategoryService.getProductsStats().catch(() => ({ total: 0, withCategory: 0 })),
+      ])
       setCategories(cats)
+      setProductStats(pStats)
     } catch (err) {
       console.error('Failed to load categories with counts, falling back to base list:', err)
       const baseCats = await productService.getCategories()
@@ -126,9 +132,42 @@ export function CategoriesPage() {
     }
   }
 
+  const makersNameEnSet = useMemo(() => {
+    return new Set(MAKERS_MASTER_CATEGORIES.map(m => normalizeCategoryName(m.name_en)))
+  }, [])
+
+  const isCategoryMakers = (c: { name_en?: string | null }) => {
+    return c.name_en ? makersNameEnSet.has(normalizeCategoryName(c.name_en)) : false
+  }
+
+  // Safety guard: detect if user enters a category that already exists in MAKERS list
+  const matchingMakersCategory = useMemo(() => {
+    const normEn = normalizeCategoryName(form.name_en)
+    const normAr = normalizeCategoryName(form.name_ar)
+    if (!normEn && !normAr) return null
+    return (
+      MAKERS_MASTER_CATEGORIES.find(m => {
+        return (
+          (normEn && normalizeCategoryName(m.name_en) === normEn) ||
+          (normAr && normalizeCategoryName(m.name_ar) === normAr)
+        )
+      }) || null
+    )
+  }, [form.name_en, form.name_ar])
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     if (!form.name_ar && !form.name_en) return
+
+    // Safety guard against duplicate manual creation of MAKERS categories
+    if (!isEditing && matchingMakersCategory) {
+      setError(
+        isRtl
+          ? 'هذا التصنيف موجود ضمن تصنيفات MAKERS — استخدمها بدلاً من إنشاء واحد جديد'
+          : 'This category exists in MAKERS list — use the existing one instead of creating a new one'
+      )
+      return
+    }
 
     setLoading(true)
     setError('')
@@ -167,33 +206,42 @@ export function CategoriesPage() {
     }
   }
 
+  const activeCategoriesCount = useMemo(() => {
+    return categories.filter(c => c.is_active === 1).length
+  }, [categories])
+
+  const makersCategoriesCount = useMemo(() => {
+    return categories.filter(c => isCategoryMakers(c)).length
+  }, [categories, makersNameEnSet])
+
+  const customCategoriesCount = useMemo(() => {
+    return categories.filter(c => !isCategoryMakers(c)).length
+  }, [categories, makersNameEnSet])
+
+  const productsWithCategoryCount = useMemo(() => {
+    return productStats.withCategory || categories.reduce((sum, c) => sum + (c.product_count || 0), 0)
+  }, [productStats.withCategory, categories])
+
+  const totalProductsCount = productStats.total
+
   const filteredCategories = useMemo(() => {
-    if (!searchQuery.trim()) return categories
+    let result = categories
+
+    if (filterType === 'makers') {
+      result = result.filter(c => isCategoryMakers(c))
+    } else if (filterType === 'custom') {
+      result = result.filter(c => !isCategoryMakers(c))
+    }
+
+    if (!searchQuery.trim()) return result
     const q = searchQuery.toLowerCase().trim()
-    return categories.filter(
+    return result.filter(
       c =>
         c.name_ar.toLowerCase().includes(q) ||
         (c.name_en && c.name_en.toLowerCase().includes(q)) ||
         (c.description && c.description.toLowerCase().includes(q))
     )
-  }, [categories, searchQuery])
-
-  const totalProductsInCategories = useMemo(() => {
-    return categories.reduce((sum, c) => sum + (c.product_count || 0), 0)
-  }, [categories])
-
-  const importedMakersCount = useMemo(() => {
-    const masterNames = new Set(
-      MAKERS_MASTER_CATEGORIES.flatMap(m => [
-        normalizeCategoryName(m.name_en),
-        normalizeCategoryName(m.name_ar),
-      ])
-    )
-    return categories.filter(c =>
-      masterNames.has(normalizeCategoryName(c.name_en || '')) ||
-      masterNames.has(normalizeCategoryName(c.name_ar || ''))
-    ).length
-  }, [categories])
+  }, [categories, filterType, searchQuery, makersNameEnSet])
 
   async function handleQuickImportAll() {
     setIsExecutingImport(true)
@@ -281,44 +329,44 @@ export function CategoriesPage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Card 1 — التصنيفات المتوفرة */}
         <div className="bg-card border border-border p-4 rounded-2xl shadow-xs flex items-center gap-3">
           <div className="p-3 bg-blue-500/10 text-blue-500 rounded-xl">
             <Layers className="w-5 h-5" />
           </div>
           <div>
             <div className="text-xs text-muted-foreground font-medium">
-              {isRtl ? 'إجمالي التصنيفات' : 'Total Categories'}
+              {isRtl ? 'التصنيفات المتوفرة' : 'Available Categories'}
             </div>
-            <div className="text-xl font-bold text-foreground">{categories.length}</div>
+            <div className="text-xl font-bold text-foreground">{activeCategoriesCount}</div>
             <div className="text-[10px] text-muted-foreground">
-              {categories.length === 0
-                ? (isRtl ? 'لا توجد تصنيفات حالياً' : 'No categories yet')
-                : (isRtl ? 'موجودة في قاعدة البيانات' : 'In database')}
+              {isRtl ? 'من قائمة MAKERS الرسمية' : 'From official MAKERS list'}
             </div>
           </div>
         </div>
 
+        {/* Card 2 — تصنيفات مخصصة */}
         <div className="bg-card border border-border p-4 rounded-2xl shadow-xs flex items-center gap-3">
           <div className="p-3 bg-emerald-500/10 text-emerald-500 rounded-xl">
             <ShieldCheck className="w-5 h-5" />
           </div>
           <div>
             <div className="text-xs text-muted-foreground font-medium">
-              {isRtl ? 'قائمة MAKERS المرجعية: 35' : 'MAKERS Reference List: 35'}
+              {isRtl ? 'تصنيفات مخصصة' : 'Custom Categories'}
             </div>
-            <div className="text-xl font-bold text-foreground">
-              {categories.length === 0
-                ? '35'
-                : `35 (${importedMakersCount} ${isRtl ? 'مستورد' : 'imported'})`}
+            <div className="text-xl font-bold text-foreground flex items-center gap-1.5">
+              <span>{customCategoriesCount}</span>
+              {customCategoriesCount === 0 && (
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              )}
             </div>
             <div className="text-[10px] text-muted-foreground">
-              {categories.length === 0
-                ? (isRtl ? '(اضغط استيراد لإضافتها)' : '(Click import to add)')
-                : (isRtl ? 'تصنيفات متطابقة مع الكتالوج' : 'Matched catalog categories')}
+              {isRtl ? 'مضافة يدوياً' : 'Manually added'}
             </div>
           </div>
         </div>
 
+        {/* Card 3 — المنتجات المصنفة */}
         <div className="bg-card border border-border p-4 rounded-2xl shadow-xs flex items-center gap-3">
           <div className="p-3 bg-amber-500/10 text-amber-500 rounded-xl">
             <Package className="w-5 h-5" />
@@ -328,7 +376,10 @@ export function CategoriesPage() {
               {isRtl ? 'المنتجات المصنفة' : 'Categorized Products'}
             </div>
             <div className="text-xl font-bold text-foreground">
-              {totalProductsInCategories} {isRtl ? 'منتج' : 'products'}
+              {productsWithCategoryCount} {isRtl ? 'منتج' : 'products'}
+            </div>
+            <div className="text-[10px] text-muted-foreground">
+              {isRtl ? `من إجمالي ${totalProductsCount} منتج` : `From total ${totalProductsCount} products`}
             </div>
           </div>
         </div>
@@ -411,6 +462,35 @@ export function CategoriesPage() {
                   />
                 </div>
 
+                {/* Safety Guard: Duplicate warning if name matches MAKERS official catalog */}
+                {matchingMakersCategory && (
+                  <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs space-y-2 animate-fade-in">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0 text-amber-500 mt-0.5" />
+                      <div className="space-y-1">
+                        <p className="font-bold leading-snug">
+                          {isRtl
+                            ? 'هذا التصنيف موجود ضمن تصنيفات MAKERS — استخدمها بدلاً من إنشاء واحد جديد'
+                            : 'This category exists in MAKERS list — use the existing one instead of creating a new one'}
+                        </p>
+                        <p className="text-[11px] opacity-80 font-mono">
+                          {matchingMakersCategory.name_en} ({matchingMakersCategory.name_ar})
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery(matchingMakersCategory.name_en)
+                        setFilterType('all')
+                      }}
+                      className="text-[11px] font-bold text-amber-900 dark:text-amber-200 underline hover:no-underline cursor-pointer"
+                    >
+                      {isRtl ? '🔍 الانتقال إلى التصنيف في الجدول' : '🔍 Find in categories table'}
+                    </button>
+                  </div>
+                )}
+
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-muted-foreground">لون التمييز (Color Accent)</label>
                   <div className="flex items-center gap-2">
@@ -444,8 +524,8 @@ export function CategoriesPage() {
         {/* Categories Table & Search */}
         <div className={canManage ? 'lg:col-span-2' : 'lg:col-span-3'}>
           <div className="bg-card border border-border rounded-2xl shadow-xs overflow-hidden flex flex-col">
-            {/* Search Bar */}
-            <div className="p-4 border-b border-border bg-muted/20 flex items-center justify-between gap-4">
+            {/* Search Bar & Filter Controls */}
+            <div className="p-4 border-b border-border bg-muted/20 flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div className="relative flex-1">
                 <Search className="w-4 h-4 text-muted-foreground absolute right-3 top-1/2 -translate-y-1/2" />
                 <input
@@ -457,7 +537,45 @@ export function CategoriesPage() {
                   className="w-full h-10 pr-9 pl-3 rounded-xl bg-background border border-border text-sm focus:ring-2 focus:ring-primary transition-all"
                 />
               </div>
-              <div className="text-xs text-muted-foreground font-semibold shrink-0">
+
+              {/* Filter Tabs */}
+              <div className="flex items-center gap-1.5 p-1 bg-muted/60 rounded-xl border border-border self-start md:self-auto shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setFilterType('all')}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    filterType === 'all'
+                      ? 'bg-background text-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  الكل ({categories.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterType('makers')}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    filterType === 'makers'
+                      ? 'bg-primary text-primary-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  MAKERS ({makersCategoriesCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterType('custom')}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    filterType === 'custom'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  تصنيفات مخصصة ({customCategoriesCount})
+                </button>
+              </div>
+
+              <div className="text-xs text-muted-foreground font-semibold shrink-0 hidden lg:block">
                 {filteredCategories.length} من {categories.length}
               </div>
             </div>
@@ -467,7 +585,11 @@ export function CategoriesPage() {
               {filteredCategories.length === 0 ? (
                 <div className="p-12 text-center text-muted-foreground">
                   <Folder className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                  <p className="text-sm font-medium">لا توجد تصنيفات مطابقة للبحث</p>
+                  <p className="text-sm font-medium">
+                    {filterType === 'custom'
+                      ? (isRtl ? 'لا توجد تصنيفات مخصصة — جميع التصنيفات الحالية تتبع قائمة MAKERS الرسمية' : 'No custom categories — all current categories follow official MAKERS list')
+                      : (isRtl ? 'لا توجد تصنيفات مطابقة للبحث' : 'No categories matching search')}
+                  </p>
                 </div>
               ) : (
                 <table className="w-full border-collapse">
@@ -481,7 +603,7 @@ export function CategoriesPage() {
                   </thead>
                   <tbody className="divide-y divide-border text-sm">
                     {filteredCategories.map(c => {
-                      const isMakersOfficial = c.description?.includes('MAKERS') || (c.sort_order && c.sort_order > 0)
+                      const isMakersOfficial = isCategoryMakers(c)
                       return (
                         <tr key={c.id} className="hover:bg-muted/30 transition-colors group">
                           <td className="p-3.5">
@@ -493,9 +615,13 @@ export function CategoriesPage() {
                               <div>
                                 <div className="font-bold text-foreground flex items-center gap-2">
                                   <span>{c.name_ar}</span>
-                                  {isMakersOfficial && (
-                                    <span className="px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                                  {isMakersOfficial ? (
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-blue-500/10 text-blue-500 border border-blue-500/20">
                                       MAKERS
+                                    </span>
+                                  ) : (
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                                      {isRtl ? 'مخصص' : 'Custom'}
                                     </span>
                                   )}
                                 </div>

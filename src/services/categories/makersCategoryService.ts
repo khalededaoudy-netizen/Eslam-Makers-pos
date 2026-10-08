@@ -212,6 +212,23 @@ export class MakersCategoryService {
       duplicatesPrevented: alreadyExistedCount,
     }
   }
+
+  /**
+   * Get total products and count of products with category assigned
+   */
+  async getProductsStats(database?: AppDatabase): Promise<{ total: number; withCategory: number }> {
+    const db = database || getDb()
+    const res = await db.select<{ total: number; withCategory: number }[]>(`
+      SELECT 
+        COUNT(*) AS total,
+        COUNT(CASE WHEN category_id IS NOT NULL AND TRIM(category_id) != '' THEN 1 END) AS withCategory
+      FROM products
+    `)
+    return {
+      total: res[0]?.total || 0,
+      withCategory: res[0]?.withCategory || 0,
+    }
+  }
 }
 
 export const makersCategoryService = new MakersCategoryService()
