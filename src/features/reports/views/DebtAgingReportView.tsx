@@ -132,7 +132,7 @@ export function DebtAgingReportView({ formatCurrency }: DebtAgingReportViewProps
                 <span>
                   {b.customersCount} {isArabic ? 'عميل' : 'debtors'}
                 </span>
-                <span className="font-mono font-bold font-semibold text-foreground">
+                <span className="font-mono font-semibold text-foreground">
                   {b.percentage}%
                 </span>
               </div>
