@@ -868,26 +868,26 @@ export function SettingsPage() {
 
   const tabGroups = [
     {
-      titleAr: '📋 الأساسي',
+      titleAr: 'الأساسي',
       titleEn: 'Core',
       tabs: ['general', 'store', 'theme_sounds'] as SettingsTabType[],
       danger: false,
     },
     {
-      titleAr: '💼 العمليات',
+      titleAr: 'العمليات',
       titleEn: 'Operations',
       tabs: ['pos', 'receipt', 'barcode'] as SettingsTabType[],
       danger: false,
     },
     {
-      titleAr: '🔧 النظام والبيانات',
-      titleEn: 'System & Data',
+      titleAr: 'النظام',
+      titleEn: 'System',
       tabs: ['database', 'security', 'integrations', 'about'] as SettingsTabType[],
       danger: false,
     },
     {
-      titleAr: '⚠️ منطقة الخطر',
-      titleEn: 'Danger Zone',
+      titleAr: '⚠️ مخاطر',
+      titleEn: '⚠️ Hazards',
       tabs: ['advanced'] as SettingsTabType[],
       danger: true,
     },
@@ -896,16 +896,16 @@ export function SettingsPage() {
   // 11 Tabs Configuration
   const tabsList: TabDef[] = [
     { id: 'general', labelAr: 'عام', labelEn: 'General', icon: Globe },
-    { id: 'store', labelAr: 'بيانات المتجر', labelEn: 'Store Info', icon: Store },
-    { id: 'pos', labelAr: 'نقطة البيع والمالية', labelEn: 'POS & Finance', icon: CreditCard, badge: '16' },
-    { id: 'receipt', labelAr: 'الفواتير والطباعة', labelEn: 'Receipt & Print', icon: Printer, badge: '15' },
+    { id: 'store', labelAr: 'المتجر', labelEn: 'Store', icon: Store },
+    { id: 'pos', labelAr: 'نقطة البيع', labelEn: 'Point of Sale', icon: CreditCard, badge: '16' },
+    { id: 'receipt', labelAr: 'الطباعة', labelEn: 'Printing', icon: Printer, badge: '15' },
     { id: 'barcode', labelAr: 'الباركود', labelEn: 'Barcode', icon: Barcode },
-    { id: 'database', labelAr: 'قاعدة البيانات والنسخ', labelEn: 'DB & Backup', icon: Database },
-    { id: 'theme_sounds', labelAr: 'المظهر والأصوات', labelEn: 'Theme & Sounds', icon: Volume2 },
+    { id: 'database', labelAr: 'النسخ الاحتياطي', labelEn: 'Backup', icon: Database },
+    { id: 'theme_sounds', labelAr: 'المظهر', labelEn: 'Appearance', icon: Volume2 },
     { id: 'security', labelAr: 'الأمان', labelEn: 'Security', icon: Lock },
-    { id: 'advanced', labelAr: 'متقدم (منطقة الخطر)', labelEn: 'Advanced', icon: ShieldAlert, danger: true, badge: 'خطر' },
+    { id: 'advanced', labelAr: 'منطقة الخطر', labelEn: 'Danger Zone', icon: ShieldAlert, danger: true, badge: 'خطر' },
     { id: 'integrations', labelAr: 'التكامل', labelEn: 'Integrations', icon: Cpu },
-    { id: 'about', labelAr: 'عن النظام', labelEn: 'About', icon: Info },
+    { id: 'about', labelAr: 'عن النظام', labelEn: 'About System', icon: Info },
   ]
 
   // Render Per-Tab Save Button component
@@ -982,7 +982,7 @@ export function SettingsPage() {
         )}
 
         {/* Mobile Horizontal Tabs (< 1024px) */}
-        <div className="lg:hidden flex gap-1.5 p-1.5 bg-muted/60 border border-border/80 rounded-2xl overflow-x-auto no-scrollbar shadow-inner">
+        <div className="lg:hidden flex gap-2 p-2 bg-card/60 backdrop-blur-sm border border-border/50 rounded-2xl overflow-x-auto no-scrollbar shadow-sm">
           {tabsList.map((tab) => {
             const Icon = tab.icon
             const isActive = activeTab === tab.id
@@ -990,14 +990,14 @@ export function SettingsPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as SettingsTabType)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all duration-150 ${
+                className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all duration-200 ${
                   isActive
                     ? tab.danger
                       ? 'bg-rose-600 text-white shadow-md ring-2 ring-rose-500/20'
                       : 'bg-primary text-primary-foreground shadow-md ring-2 ring-primary/20'
                     : tab.danger
                     ? 'text-rose-500 hover:bg-rose-500/10'
-                    : 'text-muted-foreground hover:bg-background/80 hover:text-foreground'
+                    : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
                 }`}
               >
                 <Icon className={`w-4 h-4 ${tab.danger && !isActive ? 'text-rose-500' : ''}`} />
@@ -1010,25 +1010,25 @@ export function SettingsPage() {
         {/* Main 2-Column Layout: Right-Side Sidebar in RTL (or Left in LTR) + Main Content */}
         <div className="flex flex-col lg:flex-row gap-6 items-start">
           {/* Vertical Sidebar */}
-          <aside className="w-full lg:w-64 xl:w-72 flex-shrink-0 hidden lg:flex sticky top-20 h-fit max-h-[calc(100vh-140px)] border border-border/80 bg-card/75 backdrop-blur-md rounded-2xl overflow-hidden flex-col shadow-xs">
-            <div className="p-3.5 border-b border-border/80 bg-muted/40 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-primary" />
-                <span className="text-xs font-bold text-foreground">
+          <aside className="w-full lg:w-80 xl:w-80 flex-shrink-0 hidden lg:flex sticky top-20 h-fit max-h-[calc(100vh-140px)] border border-border/50 bg-card/60 backdrop-blur-md rounded-2xl overflow-hidden flex-col shadow-sm">
+            <div className="p-4 border-b border-border/50 bg-muted/30 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <Sliders className="w-5 h-5 text-primary" />
+                <span className="text-sm font-bold text-foreground">
                   {isAr ? 'أقسام الإعدادات' : 'Settings Sections'}
                 </span>
               </div>
-              <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+              <span className="text-xs font-mono font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary">
                 11 {isAr ? 'أقسام' : 'tabs'}
               </span>
             </div>
 
-            <nav className="flex-1 overflow-y-auto p-2.5 space-y-3.5 max-h-[calc(100vh-210px)]">
+            <nav className="flex-1 overflow-y-auto p-3 space-y-4 max-h-[calc(100vh-210px)]">
               {tabGroups.map((group, gIdx) => (
-                <div key={gIdx} className="space-y-1">
+                <div key={gIdx} className="space-y-1.5">
                   <div
-                    className={`text-[10px] font-bold uppercase tracking-wider px-2.5 pt-1.5 pb-0.5 ${
-                      group.danger ? 'text-rose-500' : 'text-muted-foreground'
+                    className={`text-xs font-medium px-3 pt-2 pb-1 ${
+                      group.danger ? 'text-rose-500 font-semibold' : 'text-muted-foreground'
                     }`}
                   >
                     {isAr ? group.titleAr : group.titleEn}
@@ -1043,25 +1043,33 @@ export function SettingsPage() {
                         key={tab.id}
                         type="button"
                         onClick={() => setActiveTab(tab.id)}
-                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-start transition-all duration-150 group ${
+                        className={`relative w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group text-start ${
                           isActive
                             ? tab.danger
-                              ? 'bg-rose-600 text-white shadow-md ring-2 ring-rose-500/20'
-                              : 'bg-primary text-primary-foreground shadow-md ring-2 ring-primary/20'
+                              ? 'bg-rose-600 text-white font-semibold shadow-md ring-2 ring-rose-500/20'
+                              : 'bg-primary text-primary-foreground font-semibold shadow-md ring-2 ring-primary/20'
                             : tab.danger
                             ? 'text-rose-500 hover:bg-rose-500/10'
-                            : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+                            : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
                         }`}
                       >
+                        {/* Active indicator bar */}
+                        {isActive && (
+                          <span
+                            className={`absolute top-2.5 bottom-2.5 w-1 rounded-full ${
+                              isAr ? 'right-1.5' : 'left-1.5'
+                            } bg-white`}
+                          />
+                        )}
                         <Icon
-                          className={`w-4 h-4 flex-shrink-0 transition-transform group-hover:scale-110 ${
+                          className={`w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${
                             tab.danger && !isActive ? 'text-rose-500' : ''
                           }`}
                         />
                         <span className="flex-1 truncate">{isAr ? tab.labelAr : tab.labelEn}</span>
                         {tab.badge && (
                           <span
-                            className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-semibold ${
+                            className={`text-xs px-2 py-0.5 rounded-full font-mono font-semibold ${
                               isActive
                                 ? 'bg-white/20 text-white'
                                 : tab.danger
