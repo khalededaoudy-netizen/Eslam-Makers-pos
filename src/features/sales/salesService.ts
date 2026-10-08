@@ -510,6 +510,22 @@ class SalesService {
       [saleId]
     )
 
+    const sanitizedItems: SaleItem[] = (items || []).map((it) => ({
+      ...it,
+      quantity: Number(it.quantity) || 0,
+      unit_price: Number(it.unit_price) || 0,
+      cost_price: Number(it.cost_price) || 0,
+      discount_amount: Number(it.discount_amount) || 0,
+      discount_pct: Number(it.discount_pct) || 0,
+      subtotal: Number(it.subtotal) || 0,
+      profit: Number(it.profit) || 0,
+    }))
+
+    const sanitizedPayments: SalePayment[] = (payments || []).map((p) => ({
+      ...p,
+      amount: Number(p.amount) || 0,
+    }))
+
     return {
       id: s.id,
       invoice_number: s.invoice_number,
@@ -522,19 +538,19 @@ class SalesService {
       customer_code: s.customer_code,
       customer_phone: s.customer_phone,
       status: s.status as any,
-      subtotal: Number(s.subtotal),
-      discount_amount: Number(s.discount_amount),
-      discount_pct: Number(s.discount_pct),
+      subtotal: Number(s.subtotal) || 0,
+      discount_amount: Number(s.discount_amount) || 0,
+      discount_pct: Number(s.discount_pct) || 0,
       discount_type: s.discount_type || (Number(s.discount_pct) > 0 ? 'pct' : 'fixed'),
-      tax_amount: Number(s.tax_amount),
-      total: Number(s.total),
-      paid_amount: Number(s.paid_amount),
-      change_amount: Number(s.change_amount),
+      tax_amount: Number(s.tax_amount) || 0,
+      total: Number(s.total) || 0,
+      paid_amount: Number(s.paid_amount) || 0,
+      change_amount: Number(s.change_amount) || 0,
       notes: s.notes,
       created_at: s.created_at,
       updated_at: s.updated_at,
-      items,
-      payments,
+      items: sanitizedItems,
+      payments: sanitizedPayments,
     }
   }
 

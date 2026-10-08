@@ -58,10 +58,8 @@ export function ReceiptModal({
     }
   }, [isOpen])
 
-  if (!isOpen || !receipt) return null
-
   const handlePrint = async () => {
-    if (isPrinting) return
+    if (!receipt || isPrinting) return
     setIsPrinting(true)
     setPrintFeedback(null)
 
@@ -96,7 +94,7 @@ export function ReceiptModal({
   }
 
   const handleWhatsApp = async () => {
-    if (isSharingWhatsApp) return
+    if (!receipt || isSharingWhatsApp) return
     setIsSharingWhatsApp(true)
     setPrintFeedback(null)
 
@@ -164,6 +162,8 @@ export function ReceiptModal({
       onNewSale()
     }
   }
+
+  if (!isOpen || !receipt) return null
 
   // Store metadata
   const storeNameEn = receipt.storeName || settingsStore.storeName || 'Electronics Components'
@@ -374,10 +374,10 @@ export function ReceiptModal({
                       <span className="receipt-num" style={{ display: 'block', textAlign: 'center', direction: 'ltr' }}>{item.quantity}</span>
                     </td>
                     <td className="col-price" style={{ textAlign: 'center', padding: '4px 2px', verticalAlign: 'middle', lineHeight: '1.35', border: '1px solid #000', boxSizing: 'border-box' }}>
-                      <span className="receipt-num" style={{ display: 'block', textAlign: 'center', direction: 'ltr' }}>{item.unitPrice.toFixed(2)}</span>
+                      <span className="receipt-num" style={{ display: 'block', textAlign: 'center', direction: 'ltr' }}>{Number(item.unitPrice || 0).toFixed(2)}</span>
                     </td>
                     <td className="col-total" style={{ textAlign: 'center', padding: '4px 2px', verticalAlign: 'middle', lineHeight: '1.35', border: '1px solid #000', boxSizing: 'border-box' }}>
-                      <span className="receipt-num" style={{ display: 'block', textAlign: 'center', direction: 'ltr', fontWeight: 'bold' }}>{item.subtotal.toFixed(2)}</span>
+                      <span className="receipt-num" style={{ display: 'block', textAlign: 'center', direction: 'ltr', fontWeight: 'bold' }}>{Number(item.subtotal || 0).toFixed(2)}</span>
                     </td>
                   </tr>
                 ))}
@@ -394,26 +394,26 @@ export function ReceiptModal({
                     {t('pos.subtotal', 'المجموع الفرعي')}:
                   </td>
                   <td style={{ textAlign: 'left', direction: 'ltr', padding: '3px 4px' }} className="receipt-num">
-                    {receipt.subtotal.toFixed(2)} {currencySymbol}
+                    {Number(receipt.subtotal || 0).toFixed(2)} {currencySymbol}
                   </td>
                 </tr>
-                {receipt.discountAmount > 0 && (
+                {Number(receipt.discountAmount || 0) > 0 && (
                   <tr>
                     <td style={{ textAlign: 'right', padding: '3px 4px', fontWeight: '600' }}>
                       {t('pos.discount', 'الخصم')}:
                     </td>
                     <td style={{ textAlign: 'left', direction: 'ltr', padding: '3px 4px' }} className="receipt-num">
-                      -{receipt.discountAmount.toFixed(2)} {currencySymbol}
+                      -{Number(receipt.discountAmount || 0).toFixed(2)} {currencySymbol}
                     </td>
                   </tr>
                 )}
-                {receipt.taxAmount > 0 && (
+                {Number(receipt.taxAmount || 0) > 0 && (
                   <tr>
                     <td style={{ textAlign: 'right', padding: '3px 4px', fontWeight: '600' }}>
                       {t('pos.tax', 'ضريبة القيمة المضافة')}:
                     </td>
                     <td style={{ textAlign: 'left', direction: 'ltr', padding: '3px 4px' }} className="receipt-num">
-                      +{receipt.taxAmount.toFixed(2)} {currencySymbol}
+                      +{Number(receipt.taxAmount || 0).toFixed(2)} {currencySymbol}
                     </td>
                   </tr>
                 )}
@@ -430,7 +430,7 @@ export function ReceiptModal({
                     {t('common.total', 'الإجمالي')}:
                   </td>
                   <td style={{ textAlign: 'left', direction: 'ltr', padding: '4px 4px' }} className="receipt-num">
-                    {receipt.total.toFixed(2)} {currencySymbol}
+                    {Number(receipt.total || 0).toFixed(2)} {currencySymbol}
                   </td>
                 </tr>
               </tbody>
@@ -447,16 +447,16 @@ export function ReceiptModal({
                     {t('payments.methods', 'طرق الدفع')}:
                   </td>
                   <td style={{ textAlign: 'left', direction: 'ltr', padding: '2px 4px' }} className="receipt-num">
-                    {receipt.paidAmount.toFixed(2)} {currencySymbol}
+                    {Number(receipt.paidAmount || 0).toFixed(2)} {currencySymbol}
                   </td>
                 </tr>
-                {receipt.changeAmount > 0 && (
+                {Number(receipt.changeAmount || 0) > 0 && (
                   <tr>
                     <td style={{ textAlign: 'right', padding: '2px 4px', fontWeight: '600' }}>
                       {t('payments.change', 'المتبقي (الفكة)')}:
                     </td>
                     <td style={{ textAlign: 'left', direction: 'ltr', padding: '2px 4px' }} className="receipt-num">
-                      {receipt.changeAmount.toFixed(2)} {currencySymbol}
+                      {Number(receipt.changeAmount || 0).toFixed(2)} {currencySymbol}
                     </td>
                   </tr>
                 )}

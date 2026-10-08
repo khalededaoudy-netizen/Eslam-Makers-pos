@@ -12,6 +12,7 @@ import { settingsService } from '@/services/settings/settingsService'
 import { autoBackupService } from '@/services/db/autoBackupService'
 import { invoke } from '@tauri-apps/api/core'
 import { Zap } from 'lucide-react'
+import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 
 function AppBootstrap() {
   const { isAuthenticated, token, setUser, clearUser, isLoading, setLoading } = useAuthStore()
@@ -119,7 +120,9 @@ export default function App() {
   return (
     <I18nextProvider i18n={i18n}>
       <BrowserRouter>
-        <AppBootstrap />
+        <ErrorBoundary fallbackTitle="حدث خطأ في النظام">
+          <AppBootstrap />
+        </ErrorBoundary>
       </BrowserRouter>
     </I18nextProvider>
   )

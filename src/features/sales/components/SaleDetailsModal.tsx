@@ -49,18 +49,40 @@ export function SaleDetailsModal({
 
   useEffect(() => {
     if (isOpen && saleId) {
+      console.log('[Modal] Loading sale details for:', saleId)
       setLoading(true)
       setError(null)
       salesService
         .getSaleById(saleId)
         .then((data) => {
-          if (data) setSale(data)
-          else setError(t('sales.notFound', 'لم يتم العثور على تفاصيل الفاتورة'))
+          if (data) {
+            console.log('[Modal] Sale loaded:', data.id, data.invoice_number)
+            setSale(data)
+          } else {
+            console.warn('[Modal] Sale not found:', saleId)
+            setError(t('sales.notFound', 'لم يتم العثور على تفاصيل الفاتورة'))
+          }
         })
-        .catch((err) => setError(err.message))
+        .catch((err) => {
+          console.error('[Modal] Error loading sale:', err)
+          setError(err.message)
+        })
         .finally(() => setLoading(false))
+    } else if (!isOpen) {
+      setSale(null)
+      setError(null)
+      setLoading(false)
     }
-  }, [isOpen, saleId])
+  }, [isOpen, saleId, t])
+
+  useEffect(() => {
+    if (sale) {
+      console.log('[Modal] Mounted:', sale?.id)
+    }
+    return () => {
+      if (sale) console.log('[Modal] Unmounted:', sale?.id)
+    }
+  }, [sale])
 
   if (!isOpen) return null
 
@@ -146,12 +168,12 @@ export function SaleDetailsModal({
                           <p className="text-[10px] text-muted-foreground font-mono">{item.product_sku}</p>
                         </td>
                         <td className="px-3 py-2 text-center font-bold">{item.quantity}</td>
-                        <td className="px-3 py-2 text-end">{item.unit_price.toFixed(2)}</td>
+                        <td className="px-3 py-2 text-end">{Number(item.unit_price || 0).toFixed(2)}</td>
                         <td className="px-3 py-2 text-end text-destructive">
-                          {item.discount_amount > 0 ? `-${item.discount_amount.toFixed(2)}` : '0.00'}
+                          {Number(item.discount_amount || 0) > 0 ? `-${Number(item.discount_amount || 0).toFixed(2)}` : '0.00'}
                         </td>
                         <td className="px-3 py-2 text-end font-bold text-foreground">
-                          {item.subtotal.toFixed(2)}
+                          {Number(item.subtotal || 0).toFixed(2)}
                         </td>
                       </tr>
                     ))}
@@ -178,19 +200,19 @@ export function SaleDetailsModal({
                           {isArabic ? meta?.nameAr || p.method : meta?.nameEn || p.method}
                           {p.reference ? ` (${p.reference})` : ''}
                         </span>
-                        <span className="font-bold">{p.amount.toFixed(2)} {currencySymbol}</span>
+                        <span className="font-bold">{Number(p.amount || 0).toFixed(2)} {currencySymbol}</span>
                       </div>
                     )
                   })}
 
                   <div className="flex justify-between pt-2 border-t border-border font-bold">
                     <span>{t('payments.paidAmount', 'المدفوع')}:</span>
-                    <span>{sale.paid_amount.toFixed(2)} {currencySymbol}</span>
+                    <span>{Number(sale.paid_amount || 0).toFixed(2)} {currencySymbol}</span>
                   </div>
-                  {sale.change_amount > 0 && (
+                  {Number(sale.change_amount || 0) > 0 && (
                     <div className="flex justify-between text-emerald-600 font-bold">
                       <span>{t('payments.change', 'الفكة المستردة')}:</span>
-                      <span>{sale.change_amount.toFixed(2)} {currencySymbol}</span>
+                      <span>{Number(sale.change_amount || 0).toFixed(2)} {currencySymbol}</span>
                     </div>
                   )}
                 </div>
@@ -206,23 +228,23 @@ export function SaleDetailsModal({
                 <div className="space-y-1.5 pt-1">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground font-sans">{t('pos.subtotal', 'المجموع الفرعي')}:</span>
-                    <span>{sale.subtotal.toFixed(2)} {currencySymbol}</span>
+                    <span>{Number(sale.subtotal || 0).toFixed(2)} {currencySymbol}</span>
                   </div>
-                  {sale.discount_amount > 0 && (
+                  {Number(sale.discount_amount || 0) > 0 && (
                     <div className="flex justify-between text-destructive">
                       <span className="font-sans">{t('pos.discount', 'الخصم')}:</span>
-                      <span>-{sale.discount_amount.toFixed(2)} {currencySymbol}</span>
+                      <span>-{Number(sale.discount_amount || 0).toFixed(2)} {currencySymbol}</span>
                     </div>
                   )}
-                  {sale.tax_amount > 0 && (
+                  {Number(sale.tax_amount || 0) > 0 && (
                     <div className="flex justify-between text-muted-foreground">
                       <span className="font-sans">{t('pos.tax', 'الضريبة')}:</span>
-                      <span>+{sale.tax_amount.toFixed(2)} {currencySymbol}</span>
+                      <span>+{Number(sale.tax_amount || 0).toFixed(2)} {currencySymbol}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-sm font-bold text-foreground pt-2 border-t border-border">
                     <span className="font-sans">{t('common.total', 'الإجمالي')}:</span>
-                    <span className="text-primary">{sale.total.toFixed(2)} {currencySymbol}</span>
+                    <span className="text-primary">{Number(sale.total || 0).toFixed(2)} {currencySymbol}</span>
                   </div>
                 </div>
               </div>

@@ -25,6 +25,7 @@ import { formatCurrency, formatDate } from '@/lib/formatters'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { SaleDetailsModal } from './components/SaleDetailsModal'
 import { ReceiptModal } from './components/ReceiptModal'
+import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 
 export function SalesPage() {
   const { t, i18n } = useTranslation()
@@ -45,6 +46,7 @@ export function SalesPage() {
   const [activeReceipt, setActiveReceipt] = useState<ReceiptData | null>(null)
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
   const [autoWhatsApp, setAutoWhatsApp] = useState(false)
+  const [actionBusy, setActionBusy] = useState(false)
 
   const loadSales = useCallback(async () => {
     try {
@@ -77,12 +79,24 @@ export function SalesPage() {
     loadSales()
   }, [loadSales])
 
-  const handleOpenDetails = (saleId: string) => {
-    setSelectedSaleId(saleId)
-    setDetailsModalOpen(true)
-  }
+  const handleOpenDetails = useCallback((saleId: string) => {
+    console.log('[Action] View clicked:', saleId)
+    try {
+      setSelectedSaleId(saleId)
+      setDetailsModalOpen(true)
+      console.log('[Action] State set for details modal')
+    } catch (err) {
+      console.error('[Action] ERROR opening details:', err)
+    }
+  }, [])
 
-  const handleOpenReceipt = async (sale: Sale, openWhatsApp = false) => {
+  const handleOpenReceipt = useCallback(async (sale: Sale, openWhatsApp = false) => {
+    console.log(`[Action] ${openWhatsApp ? 'WhatsApp' : 'Print'} clicked:`, sale.id)
+    if (actionBusy) {
+      console.log('[Action] Ignored - action already in progress')
+      return
+    }
+    setActionBusy(true)
     try {
       const fullSale = await salesService.getSaleById(sale.id)
       if (fullSale) {
@@ -90,14 +104,18 @@ export function SalesPage() {
         setActiveReceipt(receipt)
         setAutoWhatsApp(openWhatsApp)
         setReceiptModalOpen(true)
+        console.log('[Action] State set for receipt modal')
       }
     } catch (err) {
-      console.error('Error generating receipt preview:', err)
+      console.error('[Action] ERROR generating receipt preview:', err)
+    } finally {
+      setActionBusy(false)
     }
-  }
+  }, [actionBusy])
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-background overflow-hidden">
+    <ErrorBoundary fallbackTitle={t('sales.errorTitle', 'حدث خطأ في عرض صفحة المبيعات')}>
+      <div className="flex-1 flex flex-col min-h-0 bg-background overflow-hidden">
       {/* Top Header */}
       <div className="px-6 py-4 border-b border-border bg-card/50 flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -307,5 +325,6 @@ export function SalesPage() {
         }}
       />
     </div>
+    </ErrorBoundary>
   )
 }

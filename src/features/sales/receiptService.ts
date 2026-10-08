@@ -95,7 +95,9 @@ class ReceiptService {
       subtotal: sale.subtotal,
       discountAmount: sale.discount_amount,
       taxAmount: sale.tax_amount,
-      taxRate: sale.subtotal > 0 ? (sale.tax_amount / (sale.subtotal - sale.discount_amount)) * 100 : 0,
+      taxRate: (Number(sale.subtotal) - Number(sale.discount_amount || 0)) > 0
+        ? ((Number(sale.tax_amount) || 0) / (Number(sale.subtotal) - Number(sale.discount_amount || 0))) * 100
+        : 0,
       total: sale.total,
       paidAmount: sale.paid_amount,
       changeAmount: sale.change_amount,

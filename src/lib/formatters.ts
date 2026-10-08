@@ -3,8 +3,10 @@
  */
 
 /** Format a number as currency */
-export function formatCurrency(amount: number, symbol = 'ج.م', decimals = 2): string {
-  return `${amount.toFixed(decimals)} ${symbol}`
+export function formatCurrency(amount: number | string | null | undefined, symbol = 'ج.م', decimals = 2): string {
+  const num = typeof amount === 'number' ? amount : parseFloat(String(amount ?? 0))
+  const safeNum = isNaN(num) ? 0 : num
+  return `${safeNum.toFixed(decimals)} ${symbol}`
 }
 
 /** Format ISO date string using Western/English digits (DD/MM/YYYY) */
@@ -58,9 +60,11 @@ export function generateBarcodeValue(sku: string): string {
 }
 
 /** Format a number with appropriate decimals */
-export function formatQuantity(qty: number, allowDecimal: boolean): string {
-  if (allowDecimal) return qty.toFixed(2)
-  return qty.toFixed(0)
+export function formatQuantity(qty: number | string | null | undefined, allowDecimal: boolean): string {
+  const num = typeof qty === 'number' ? qty : parseFloat(String(qty ?? 0))
+  const safeNum = isNaN(num) ? 0 : num
+  if (allowDecimal) return safeNum.toFixed(2)
+  return safeNum.toFixed(0)
 }
 
 /** Get today's date as YYYY-MM-DD */
