@@ -906,30 +906,31 @@
 }
 
 /* Reports A4 Print Layout */
-@page report-a4 {
+@page {
   size: A4 portrait;
   margin: 15mm;
 }
 
 @media print {
   body.printing-report * {
-    visibility: hidden;
+    visibility: hidden !important;
   }
 
   body.printing-report #printable-report,
   body.printing-report #printable-report * {
-    visibility: visible;
+    visibility: visible !important;
   }
 
   #printable-report {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 180mm;
-    padding: 0;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    direction: rtl !important;
+    unicode-bidi: embed !important;
     background: #fff !important;
     color: #000 !important;
-    font-family: 'Cairo', 'Segoe UI', Arial, sans-serif;
+    font-family: 'Cairo', 'Noto Sans Arabic', Arial, sans-serif !important;
     font-size: 11pt;
     line-height: 1.5;
   }

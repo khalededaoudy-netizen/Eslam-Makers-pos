@@ -36,8 +36,11 @@ import { ProductCategoryReportView } from './views/ProductCategoryReportView'
 export function ReportsPage() {
   const { t, i18n } = useTranslation()
   const isRtl = i18n.language === 'ar'
-  const currencySymbol = useSettingsStore(s => s.currencySymbol) || 'EGP'
+  const currencySymbol = useSettingsStore(s => s.currencySymbol) || (isRtl ? 'ج.م' : 'EGP')
   const storeName = useSettingsStore(s => s.storeName) || 'MAKERS POS'
+  const storePhone = useSettingsStore(s => s.storePhone)
+  const storeAddress = useSettingsStore(s => s.storeAddress)
+  const storeAddressAr = useSettingsStore(s => s.storeAddressAr)
 
   const [activeSection, setActiveSection] = useState<ReportSection>('overview')
   const [dateRange, setDateRange] = useState<ReportDateRange>(() =>
@@ -53,10 +56,11 @@ export function ReportsPage() {
   }, [])
 
   const formatCurrency = useCallback((val: number) => {
-    return `${val.toLocaleString(isRtl ? 'ar-EG' : 'en-US', {
+    const formattedNum = Number(val || 0).toLocaleString('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    })} ${currencySymbol}`
+    })
+    return `${formattedNum} ${currencySymbol || (isRtl ? 'ج.م' : 'EGP')}`
   }, [isRtl, currencySymbol])
 
   const loadOverview = useCallback(async () => {
@@ -254,7 +258,7 @@ export function ReportsPage() {
   }
 
   const handlePrintA4 = async () => {
-    const reportEl = document.getElementById('active-report-view')
+    const reportEl = document.getElementById('report-content') || document.getElementById('active-report-view')
     if (!reportEl) return
     try {
       await printReportA4(reportEl, {
@@ -263,6 +267,8 @@ export function ReportsPage() {
         dateFrom: dateRange.startDate.slice(0, 10),
         dateTo: dateRange.endDate.slice(0, 10),
         storeName: storeName || 'MAKERS POS',
+        phone: storePhone || undefined,
+        address: isRtl ? (storeAddressAr || storeAddress || undefined) : (storeAddress || undefined),
         isArabic: isRtl,
       })
     } catch (err: any) {
@@ -272,7 +278,7 @@ export function ReportsPage() {
   }
 
   const handleExportPdf = async () => {
-    const reportEl = document.getElementById('active-report-view')
+    const reportEl = document.getElementById('report-content') || document.getElementById('active-report-view')
     if (!reportEl) return
     showToast(isRtl ? 'جاري تجهيز وتحميل ملف PDF...' : 'Generating PDF...', 'success')
     try {
@@ -282,6 +288,8 @@ export function ReportsPage() {
         dateFrom: dateRange.startDate.slice(0, 10),
         dateTo: dateRange.endDate.slice(0, 10),
         storeName: storeName || 'MAKERS POS',
+        phone: storePhone || undefined,
+        address: isRtl ? (storeAddressAr || storeAddress || undefined) : (storeAddress || undefined),
         isArabic: isRtl,
       })
       showToast(isRtl ? 'تم تحميل ملف PDF بنجاح' : 'PDF downloaded successfully', 'success')
@@ -292,7 +300,7 @@ export function ReportsPage() {
   }
 
   const handleShareWhatsApp = async () => {
-    const reportEl = document.getElementById('active-report-view')
+    const reportEl = document.getElementById('report-content') || document.getElementById('active-report-view')
     if (!reportEl) return
     showToast(isRtl ? 'جاري تجهيز صورة التقرير وفتح واتساب...' : 'Preparing WhatsApp share...', 'success')
     try {
@@ -302,6 +310,8 @@ export function ReportsPage() {
         dateFrom: dateRange.startDate.slice(0, 10),
         dateTo: dateRange.endDate.slice(0, 10),
         storeName: storeName || 'MAKERS POS',
+        phone: storePhone || undefined,
+        address: isRtl ? (storeAddressAr || storeAddress || undefined) : (storeAddress || undefined),
         isArabic: isRtl,
       })
       if (res.success) {
@@ -408,7 +418,7 @@ export function ReportsPage() {
           loading={loading}
         />
 
-        <div id="active-report-view" className="p-4 md:p-6 flex-1">
+        <div id="report-content" className="p-4 md:p-6 flex-1">
           {activeSection === 'overview' && (
             <OverviewReportView
               kpis={overviewKpis}
