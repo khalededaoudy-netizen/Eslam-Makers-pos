@@ -179,6 +179,23 @@
     -webkit-appearance: none;
     margin: 0;
   }
+
+  /* Hide WebView2 native password reveal button */
+  input[type="password"]::-ms-reveal,
+  input[type="password"]::-ms-clear {
+    display: none !important;
+  }
+
+  /* For Chromium/WebView2 */
+  input[type="password"]::-webkit-credentials-auto-fill-button,
+  input[type="password"]::-webkit-strong-password-auto-fill-button {
+    display: none !important;
+  }
+
+  /* Also hide Edge specific */
+  input::-ms-reveal {
+    display: none;
+  }
 }
 
 /* ─── Utility Classes ────────────────────────────────────────────────────── */
