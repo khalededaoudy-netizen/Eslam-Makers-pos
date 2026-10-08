@@ -10,12 +10,28 @@ import { initDatabase, seedInitialData } from '@/services/db/database'
 import { authService } from '@/services/auth/authService'
 import { settingsService } from '@/services/settings/settingsService'
 import { autoBackupService } from '@/services/db/autoBackupService'
+import { invoke } from '@tauri-apps/api/core'
 import { Zap } from 'lucide-react'
 
 function AppBootstrap() {
   const { isAuthenticated, token, setUser, clearUser, isLoading, setLoading } = useAuthStore()
   const { language, theme, setLanguage, setTheme } = useSettingsStore()
   const initialized = useRef(false)
+
+  // Auto-cleanup legacy WebView2 saved autofill/logins on first launch after update
+  useEffect(() => {
+    async function cleanupOldSavedData() {
+      try {
+        const cleaned = localStorage.getItem('webview_cleaned_v1')
+        if (cleaned) return
+        await invoke('clear_webview_data').catch(() => {})
+        localStorage.setItem('webview_cleaned_v1', '1')
+      } catch {
+        // safe ignore
+      }
+    }
+    cleanupOldSavedData()
+  }, [])
 
   useEffect(() => {
     if (initialized.current) return

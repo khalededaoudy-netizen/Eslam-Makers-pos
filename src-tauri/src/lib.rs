@@ -1007,6 +1007,48 @@ async fn save_temp_image(
     Ok(file_path.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+async fn clear_webview_data() -> Result<(), String> {
+    use std::path::Path;
+
+    let app_data = std::env::var("LOCALAPPDATA")
+        .map_err(|e| e.to_string())?;
+
+    let eb_path = Path::new(&app_data)
+        .join("com.makers.pos")
+        .join("EBWebView")
+        .join("Default");
+
+    if !eb_path.exists() {
+        return Ok(());
+    }
+
+    // Files to delete
+    let targets = [
+        "Login Data",
+        "Login Data For Account",
+        "Login Data For Account-journal",
+        "Login Data For Account-wal",
+        "Login Data For Account-shm",
+        "Login Data-journal",
+        "Login Data-wal",
+        "Login Data-shm",
+        "Web Data",
+        "Web Data-journal",
+        "Web Data-wal",
+        "Web Data-shm",
+    ];
+
+    for target in &targets {
+        let file = eb_path.join(target);
+        if file.exists() {
+            let _ = std::fs::remove_file(&file);
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -1026,7 +1068,8 @@ pub fn run() {
         check_path_accessible,
         copy_backup_to_secondary,
         delete_backup_file,
-        append_app_log
+        append_app_log,
+        clear_webview_data
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

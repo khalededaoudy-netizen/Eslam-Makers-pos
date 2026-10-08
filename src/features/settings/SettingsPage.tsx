@@ -33,6 +33,7 @@ import {
   XCircle,
   Trash2,
   UserX,
+  KeyRound,
 } from 'lucide-react'
 import { useSettingsStore, Language, Theme, PaperWidth } from '@/stores/settingsStore'
 import { useAuthStore, usePermission } from '@/stores/authStore'
@@ -375,6 +376,31 @@ export function SettingsPage() {
       setErrorMsg(err?.message || 'Failed to restore backup')
     } finally {
       setIsRestoring(false)
+    }
+  }
+
+  // Clear Saved Logins (WebView2)
+  const [isClearingWebview, setIsClearingWebview] = useState(false)
+
+  const handleClearSavedLogins = async () => {
+    if (!window.confirm(settings.language === 'ar' ? 'مسح كل بيانات الدخول المحفوظة؟' : 'Clear all saved login data?')) return
+    setIsClearingWebview(true)
+    setErrorMsg('')
+    try {
+      await invoke('clear_webview_data')
+      setSuccessMsg(
+        settings.language === 'ar'
+          ? 'تم المسح. أعد تشغيل التطبيق للتأثير.'
+          : 'Cleared successfully. Restart the app for changes to take effect.'
+      )
+    } catch (err: any) {
+      setErrorMsg(
+        settings.language === 'ar'
+          ? 'فشل في المسح'
+          : 'Failed to clear saved logins'
+      )
+    } finally {
+      setIsClearingWebview(false)
     }
   }
 
@@ -1654,6 +1680,37 @@ export function SettingsPage() {
                         {testUsersList.length}
                       </span>
                     )}
+                  </div>
+                </div>
+
+                {/* Clear Saved Logins (WebView2) Card */}
+                <div className="bg-slate-500/5 dark:bg-slate-900/30 border border-border rounded-2xl p-6 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between flex-wrap gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 rounded-2xl bg-muted text-foreground border border-border">
+                        <KeyRound className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h2 className="text-base font-bold text-foreground">
+                          {settings.language === 'ar' ? 'مسح بيانات الدخول المحفوظة' : 'Clear Saved Login Data'}
+                        </h2>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {settings.language === 'ar'
+                            ? 'مسح أسماء المستخدمين المحفوظة في WebView2 وإيقاف الاقتراحات القديمة'
+                            : 'Clear saved usernames and autofill data stored in WebView2'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleClearSavedLogins}
+                      disabled={isClearingWebview}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-muted hover:bg-muted/80 text-foreground text-xs font-bold border border-border shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                      <span>{settings.language === 'ar' ? 'مسح بيانات الدخول المحفوظة' : 'Clear Saved Logins'}</span>
+                    </button>
                   </div>
                 </div>
               </div>

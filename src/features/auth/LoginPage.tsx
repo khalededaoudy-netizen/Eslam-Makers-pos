@@ -78,7 +78,7 @@ export function LoginPage() {
             <p className="text-sm text-muted-foreground mt-1">{t('auth.welcomeSub')}</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4">
             {/* Username */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-foreground" htmlFor="login-username">
@@ -87,13 +87,17 @@ export function LoginPage() {
               <input
                 id="login-username"
                 type="text"
+                name="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full h-10 px-3 rounded-lg bg-input border border-border text-foreground
                            placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring
                            focus:border-transparent transition-all duration-150 text-sm"
                 placeholder={t('auth.username')}
-                autoComplete="username"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
                 autoFocus
                 disabled={isSubmitting}
               />
@@ -108,13 +112,17 @@ export function LoginPage() {
                 <input
                   id="login-password"
                   type={showPassword ? 'text' : 'password'}
+                  name="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full h-10 px-3 pe-10 rounded-lg bg-input border border-border text-foreground
                              placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring
                              focus:border-transparent transition-all duration-150 text-sm"
                   placeholder="••••••••"
-                  autoComplete="current-password"
+                  autoComplete="new-password"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
                   disabled={isSubmitting}
                 />
                 <button
