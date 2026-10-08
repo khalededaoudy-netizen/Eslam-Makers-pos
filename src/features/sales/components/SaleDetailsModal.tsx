@@ -17,6 +17,7 @@ import {
   AlertCircle,
   Clock,
   ShieldCheck,
+  MessageSquare,
 } from 'lucide-react'
 import { Sale, SaleItem, SalePayment } from '../types'
 import { salesService } from '../salesService'
@@ -29,7 +30,7 @@ interface SaleDetailsModalProps {
   saleId: string | null
   isOpen: boolean
   onClose: () => void
-  onViewReceipt: (sale: Sale) => void
+  onViewReceipt: (sale: Sale, autoWhatsApp?: boolean) => void
 }
 
 export function SaleDetailsModal({
@@ -240,14 +241,26 @@ export function SaleDetailsModal({
           </button>
 
           {sale && (
-            <button
-              type="button"
-              onClick={() => onViewReceipt(sale)}
-              className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-xs hover:bg-primary/90 transition-colors flex items-center gap-2 shadow-sm"
-            >
-              <Printer className="w-4 h-4" />
-              <span>{t('sales.viewReceipt', 'عرض وطباعة الإيصال')}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onViewReceipt(sale, true)}
+                className="px-4 py-2.5 rounded-xl bg-emerald-600/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600/25 border border-emerald-500/30 font-bold text-xs transition-colors flex items-center gap-2 shadow-sm"
+                title={t('whatsapp.send', 'إرسال على واتساب')}
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span>{t('whatsapp.send', 'إرسال على واتساب')}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onViewReceipt(sale, false)}
+                className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-xs hover:bg-primary/90 transition-colors flex items-center gap-2 shadow-sm"
+              >
+                <Printer className="w-4 h-4" />
+                <span>{t('sales.viewReceipt', 'عرض وطباعة الإيصال')}</span>
+              </button>
+            </div>
           )}
         </div>
       </div>

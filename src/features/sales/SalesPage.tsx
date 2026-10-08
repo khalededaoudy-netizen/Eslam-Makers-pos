@@ -16,6 +16,7 @@ import {
   User,
   Hash,
   Filter,
+  MessageSquare,
 } from 'lucide-react'
 import { salesService } from './salesService'
 import { receiptService } from './receiptService'
@@ -43,6 +44,7 @@ export function SalesPage() {
   const [detailsModalOpen, setDetailsModalOpen] = useState(false)
   const [activeReceipt, setActiveReceipt] = useState<ReceiptData | null>(null)
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
+  const [autoWhatsApp, setAutoWhatsApp] = useState(false)
 
   const loadSales = useCallback(async () => {
     try {
@@ -80,12 +82,13 @@ export function SalesPage() {
     setDetailsModalOpen(true)
   }
 
-  const handleOpenReceipt = async (sale: Sale) => {
+  const handleOpenReceipt = async (sale: Sale, openWhatsApp = false) => {
     try {
       const fullSale = await salesService.getSaleById(sale.id)
       if (fullSale) {
         const receipt = await receiptService.buildReceiptData(fullSale)
         setActiveReceipt(receipt)
+        setAutoWhatsApp(openWhatsApp)
         setReceiptModalOpen(true)
       }
     } catch (err) {
@@ -258,11 +261,19 @@ export function SalesPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleOpenReceipt(s)}
+                          onClick={() => handleOpenReceipt(s, false)}
                           className="p-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
                           title={t('sales.printReceipt', 'طباعة الإيصال')}
                         >
                           <Printer className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenReceipt(s, true)}
+                          className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                          title={t('whatsapp.send', 'إرسال على واتساب')}
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </td>
@@ -279,9 +290,9 @@ export function SalesPage() {
         saleId={selectedSaleId}
         isOpen={detailsModalOpen}
         onClose={() => setDetailsModalOpen(false)}
-        onViewReceipt={(s) => {
+        onViewReceipt={(s, openWhatsApp = false) => {
           setDetailsModalOpen(false)
-          handleOpenReceipt(s)
+          handleOpenReceipt(s, openWhatsApp)
         }}
       />
 
@@ -289,7 +300,11 @@ export function SalesPage() {
       <ReceiptModal
         receipt={activeReceipt}
         isOpen={receiptModalOpen}
-        onClose={() => setReceiptModalOpen(false)}
+        autoWhatsApp={autoWhatsApp}
+        onClose={() => {
+          setReceiptModalOpen(false)
+          setAutoWhatsApp(false)
+        }}
       />
     </div>
   )

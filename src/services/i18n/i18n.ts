@@ -1098,6 +1098,17 @@ const arTranslation = {
         shiftOpened: 'تم فتح الوردية بنجاح',
         shiftClosed: 'تم إغلاق الوردية',
         mustOpenShiftFirst: 'يجب فتح وردية أولاً'
+    },
+    whatsapp: {
+        send: 'إرسال على واتساب',
+        enterPhone: 'أدخل رقم الموبايل:',
+        copied: 'تم نسخ الصورة',
+        saved: 'تم حفظ الصورة',
+        opening: 'جاري فتح واتساب...',
+        failed: 'فشل في فتح واتساب',
+        copyImage: 'نسخ الصورة',
+        saveImage: 'حفظ الصورة',
+        openWhatsApp: 'فتح واتساب'
     }
 };
 
@@ -2198,6 +2209,17 @@ const enTranslation = {
         shiftOpened: 'Shift opened successfully',
         shiftClosed: 'Shift closed',
         mustOpenShiftFirst: 'You must open a shift first'
+    },
+    whatsapp: {
+        send: 'Send via WhatsApp',
+        enterPhone: 'Enter phone number:',
+        copied: 'Image copied',
+        saved: 'Image saved',
+        opening: 'Opening WhatsApp...',
+        failed: 'Failed to open WhatsApp',
+        copyImage: 'Copy Image',
+        saveImage: 'Save Image',
+        openWhatsApp: 'Open WhatsApp'
     }
 };
 

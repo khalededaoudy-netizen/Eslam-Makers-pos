@@ -11,11 +11,15 @@ import {
   CheckCircle2,
   AlertTriangle,
   Loader2,
+  MessageSquare,
+  Eye,
 } from 'lucide-react'
 import { ReceiptData } from '../types'
 import { formatDate } from '@/lib/formatters'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { printReceiptDirect } from '@/services/printer/directPrint'
+import { shareReceiptViaWhatsApp, WhatsAppShareResult } from '@/services/whatsapp/whatsappService'
+import { WhatsAppShareModal } from './WhatsAppShareModal'
 import makersLogo from '@/assets/logo.png'
 
 interface ReceiptModalProps {
@@ -23,6 +27,7 @@ interface ReceiptModalProps {
   isOpen: boolean
   onClose: () => void
   onNewSale?: () => void
+  autoWhatsApp?: boolean
 }
 
 export function ReceiptModal({
@@ -30,6 +35,7 @@ export function ReceiptModal({
   isOpen,
   onClose,
   onNewSale,
+  autoWhatsApp = false,
 }: ReceiptModalProps) {
   const { t, i18n } = useTranslation()
   const isArabic = i18n.language !== 'en'
@@ -38,7 +44,19 @@ export function ReceiptModal({
   const receiptRef = useRef<HTMLDivElement>(null)
 
   const [isPrinting, setIsPrinting] = useState(false)
-  const [printFeedback, setPrintFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [isSharingWhatsApp, setIsSharingWhatsApp] = useState(false)
+  const [whatsAppModalOpen, setWhatsAppModalOpen] = useState(false)
+  const [shareResult, setShareResult] = useState<WhatsAppShareResult | null>(null)
+  const [printFeedback, setPrintFeedback] = useState<{ type: 'success' | 'error'; message: string; showPreview?: boolean } | null>(null)
+
+  const autoWhatsAppTriggered = useRef(false)
+
+  // Reset auto-trigger ref when modal closes or receipt changes
+  React.useEffect(() => {
+    if (!isOpen) {
+      autoWhatsAppTriggered.current = false
+    }
+  }, [isOpen])
 
   if (!isOpen || !receipt) return null
 
@@ -77,6 +95,69 @@ export function ReceiptModal({
     }
   }
 
+  const handleWhatsApp = async () => {
+    if (isSharingWhatsApp) return
+    setIsSharingWhatsApp(true)
+    setPrintFeedback(null)
+
+    try {
+      let phone = receipt.customerPhone || null
+      if (!phone) {
+        const input = window.prompt(
+          isArabic
+            ? 'أدخل رقم الموبايل (أو اتركه فارغاً للبحث في جهات الاتصال):'
+            : 'Enter phone number (or leave empty to pick a contact in WhatsApp):'
+        )
+        if (input === null) {
+          setIsSharingWhatsApp(false)
+          return
+        }
+        phone = input.trim() || null
+      }
+
+      const el = document.getElementById('printable-receipt')
+      if (!el) {
+        throw new Error(isArabic ? 'لم يتم العثور على الإيصال' : 'Receipt element not found')
+      }
+
+      const res = await shareReceiptViaWhatsApp(el, {
+        phone: phone || undefined,
+        customerName: receipt.customerName,
+        invoiceNumber: receipt.invoiceNumber,
+        total: receipt.total,
+        storeName: receipt.storeName || settingsStore.storeName || 'MAKERS',
+      })
+
+      setShareResult(res)
+      setPrintFeedback({
+        type: 'success',
+        message: isArabic
+          ? 'تم فتح واتساب ونسخ صورة الفاتورة للحافظة (Ctrl+V للصق)'
+          : 'Opened WhatsApp & copied receipt image to clipboard',
+        showPreview: true,
+      })
+    } catch (err: any) {
+      console.error('[ReceiptModal] WhatsApp share error:', err)
+      setPrintFeedback({
+        type: 'error',
+        message: err?.message || (isArabic ? 'فشل في مشاركة الفاتورة عبر واتساب' : 'Failed to share receipt via WhatsApp'),
+      })
+    } finally {
+      setIsSharingWhatsApp(false)
+    }
+  }
+
+  // Trigger WhatsApp share automatically if requested via autoWhatsApp prop
+  React.useEffect(() => {
+    if (isOpen && autoWhatsApp && receipt && !autoWhatsAppTriggered.current) {
+      autoWhatsAppTriggered.current = true
+      const timer = setTimeout(() => {
+        handleWhatsApp()
+      }, 200)
+      return () => clearTimeout(timer)
+    }
+  }, [isOpen, autoWhatsApp, receipt])
+
   const handleDone = () => {
     onClose()
     if (onNewSale) {
@@ -104,6 +185,16 @@ export function ReceiptModal({
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={handleWhatsApp}
+              disabled={isSharingWhatsApp}
+              className="px-2.5 py-1.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-colors flex items-center gap-1.5 text-xs font-semibold shadow-sm disabled:opacity-50"
+              title={t('whatsapp.send', 'إرسال على واتساب')}
+            >
+              {isSharingWhatsApp ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MessageSquare className="w-3.5 h-3.5" />}
+              <span>{isSharingWhatsApp ? (isArabic ? 'جاري الفتح...' : 'Opening...') : t('whatsapp.send', 'واتساب')}</span>
+            </button>
+            <button
+              type="button"
               onClick={handlePrint}
               disabled={isPrinting}
               className="p-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors flex items-center gap-1.5 text-xs font-semibold shadow-sm disabled:opacity-50"
@@ -125,20 +216,34 @@ export function ReceiptModal({
         {/* Feedback Alert */}
         {printFeedback && (
           <div
-            className={`mx-6 mt-3 px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs font-semibold animate-in fade-in ${
+            className={`mx-6 mt-3 px-4 py-2.5 rounded-xl flex items-center justify-between gap-2 text-xs font-semibold animate-in fade-in ${
               printFeedback.type === 'success'
                 ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
                 : 'bg-destructive/15 border border-destructive/30 text-destructive'
             }`}
           >
-            {printFeedback.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-            ) : (
-              <AlertTriangle className="w-4 h-4 shrink-0" />
+            <div className="flex items-center gap-2">
+              {printFeedback.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+              )}
+              <span>{printFeedback.message}</span>
+            </div>
+            {printFeedback.showPreview && shareResult && (
+              <button
+                type="button"
+                onClick={() => setWhatsAppModalOpen(true)}
+                className="underline hover:no-underline text-xs shrink-0 flex items-center gap-1 font-bold"
+              >
+                <Eye className="w-3 h-3" />
+                <span>{isArabic ? 'عرض الخيارات' : 'Options'}</span>
+              </button>
             )}
-            <span>{printFeedback.message}</span>
           </div>
         )}
+
+
 
 
         {/* Scrollable Receipt Preview Container */}
@@ -391,11 +496,22 @@ export function ReceiptModal({
             <button
               type="button"
               onClick={handlePrint}
-              disabled={isPrinting}
+              disabled={isPrinting || isSharingWhatsApp}
               className="px-4 py-2 rounded-xl bg-muted hover:bg-muted/80 text-foreground border border-border text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
             >
               {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
               <span>{isPrinting ? (isArabic ? 'جاري الطباعة...' : 'Printing...') : t('common.print', 'طباعة')}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleWhatsApp}
+              disabled={isPrinting || isSharingWhatsApp}
+              className="px-4 py-2 rounded-xl bg-emerald-600/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600/20 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+              title={t('whatsapp.send', 'إرسال على واتساب')}
+            >
+              {isSharingWhatsApp ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+              <span>{isSharingWhatsApp ? (isArabic ? 'جاري الإرسال...' : 'Sending...') : t('whatsapp.send', 'إرسال على واتساب')}</span>
             </button>
 
             <button
@@ -409,6 +525,18 @@ export function ReceiptModal({
           </div>
         </div>
       </div>
+
+      {/* WhatsApp Share Fallback & Options Modal */}
+      <WhatsAppShareModal
+        isOpen={whatsAppModalOpen}
+        onClose={() => setWhatsAppModalOpen(false)}
+        imageDataUrl={shareResult?.imageDataUrl || null}
+        blob={shareResult?.blob || null}
+        invoiceNumber={receipt.invoiceNumber}
+        total={receipt.total}
+        customerPhone={receipt.customerPhone}
+        customerName={receipt.customerName}
+      />
     </div>
   )
 }

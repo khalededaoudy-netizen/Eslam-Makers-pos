@@ -985,6 +985,28 @@ async fn append_app_log(
     Ok(())
 }
 
+#[tauri::command]
+async fn save_temp_image(
+    base64: String,
+    filename: String,
+) -> Result<String, String> {
+    use base64::{engine::general_purpose, Engine};
+
+    let bytes = general_purpose::STANDARD
+        .decode(&base64)
+        .map_err(|e| e.to_string())?;
+
+    let temp_dir = std::env::temp_dir().join("MAKERS_POS");
+    if !temp_dir.exists() {
+        fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
+    }
+
+    let file_path = temp_dir.join(&filename);
+    fs::write(&file_path, bytes).map_err(|e| e.to_string())?;
+
+    Ok(file_path.to_string_lossy().to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -999,6 +1021,7 @@ pub fn run() {
         open_cash_drawer,
         execute_sql_transaction,
         open_external_url,
+        save_temp_image,
         get_backup_dir,
         check_path_accessible,
         copy_backup_to_secondary,
