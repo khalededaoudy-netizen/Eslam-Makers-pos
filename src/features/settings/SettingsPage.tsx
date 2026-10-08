@@ -863,19 +863,47 @@ export function SettingsPage() {
     labelEn: string
     icon: any
     danger?: boolean
+    badge?: string
   }
+
+  const tabGroups = [
+    {
+      titleAr: '📋 الأساسي',
+      titleEn: 'Core',
+      tabs: ['general', 'store', 'theme_sounds'] as SettingsTabType[],
+      danger: false,
+    },
+    {
+      titleAr: '💼 العمليات',
+      titleEn: 'Operations',
+      tabs: ['pos', 'receipt', 'barcode'] as SettingsTabType[],
+      danger: false,
+    },
+    {
+      titleAr: '🔧 النظام والبيانات',
+      titleEn: 'System & Data',
+      tabs: ['database', 'security', 'integrations', 'about'] as SettingsTabType[],
+      danger: false,
+    },
+    {
+      titleAr: '⚠️ منطقة الخطر',
+      titleEn: 'Danger Zone',
+      tabs: ['advanced'] as SettingsTabType[],
+      danger: true,
+    },
+  ]
 
   // 11 Tabs Configuration
   const tabsList: TabDef[] = [
     { id: 'general', labelAr: 'عام', labelEn: 'General', icon: Globe },
     { id: 'store', labelAr: 'بيانات المتجر', labelEn: 'Store Info', icon: Store },
-    { id: 'pos', labelAr: 'نقطة البيع والمالية', labelEn: 'POS & Finance', icon: CreditCard },
-    { id: 'receipt', labelAr: 'الفواتير والطباعة', labelEn: 'Receipt & Print', icon: Printer },
+    { id: 'pos', labelAr: 'نقطة البيع والمالية', labelEn: 'POS & Finance', icon: CreditCard, badge: '16' },
+    { id: 'receipt', labelAr: 'الفواتير والطباعة', labelEn: 'Receipt & Print', icon: Printer, badge: '15' },
     { id: 'barcode', labelAr: 'الباركود', labelEn: 'Barcode', icon: Barcode },
     { id: 'database', labelAr: 'قاعدة البيانات والنسخ', labelEn: 'DB & Backup', icon: Database },
     { id: 'theme_sounds', labelAr: 'المظهر والأصوات', labelEn: 'Theme & Sounds', icon: Volume2 },
     { id: 'security', labelAr: 'الأمان', labelEn: 'Security', icon: Lock },
-    { id: 'advanced', labelAr: 'متقدم (منطقة الخطر)', labelEn: 'Advanced', icon: ShieldAlert, danger: true },
+    { id: 'advanced', labelAr: 'متقدم (منطقة الخطر)', labelEn: 'Advanced', icon: ShieldAlert, danger: true, badge: 'خطر' },
     { id: 'integrations', labelAr: 'التكامل', labelEn: 'Integrations', icon: Cpu },
     { id: 'about', labelAr: 'عن النظام', labelEn: 'About', icon: Info },
   ]
@@ -930,7 +958,7 @@ export function SettingsPage() {
         )}
       </div>
 
-      <div className="p-8 max-w-5xl mx-auto w-full space-y-6">
+      <div className="p-4 lg:p-8 max-w-7xl mx-auto w-full space-y-6">
         {/* Read-only Alert */}
         {!canEdit && (
           <div className="flex items-center gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 text-sm">
@@ -953,8 +981,8 @@ export function SettingsPage() {
           </div>
         )}
 
-        {/* 11 Navigation Tabs Bar */}
-        <div className="flex gap-1.5 p-1.5 bg-muted/60 border border-border/80 rounded-2xl overflow-x-auto no-scrollbar shadow-inner">
+        {/* Mobile Horizontal Tabs (< 1024px) */}
+        <div className="lg:hidden flex gap-1.5 p-1.5 bg-muted/60 border border-border/80 rounded-2xl overflow-x-auto no-scrollbar shadow-inner">
           {tabsList.map((tab) => {
             const Icon = tab.icon
             const isActive = activeTab === tab.id
@@ -978,6 +1006,82 @@ export function SettingsPage() {
             )
           })}
         </div>
+
+        {/* Main 2-Column Layout: Right-Side Sidebar in RTL (or Left in LTR) + Main Content */}
+        <div className="flex flex-col lg:flex-row gap-6 items-start">
+          {/* Vertical Sidebar */}
+          <aside className="w-full lg:w-64 xl:w-72 flex-shrink-0 hidden lg:flex sticky top-20 h-fit max-h-[calc(100vh-140px)] border border-border/80 bg-card/75 backdrop-blur-md rounded-2xl overflow-hidden flex-col shadow-xs">
+            <div className="p-3.5 border-b border-border/80 bg-muted/40 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-primary" />
+                <span className="text-xs font-bold text-foreground">
+                  {isAr ? 'أقسام الإعدادات' : 'Settings Sections'}
+                </span>
+              </div>
+              <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                11 {isAr ? 'أقسام' : 'tabs'}
+              </span>
+            </div>
+
+            <nav className="flex-1 overflow-y-auto p-2.5 space-y-3.5 max-h-[calc(100vh-210px)]">
+              {tabGroups.map((group, gIdx) => (
+                <div key={gIdx} className="space-y-1">
+                  <div
+                    className={`text-[10px] font-bold uppercase tracking-wider px-2.5 pt-1.5 pb-0.5 ${
+                      group.danger ? 'text-rose-500' : 'text-muted-foreground'
+                    }`}
+                  >
+                    {isAr ? group.titleAr : group.titleEn}
+                  </div>
+                  {group.tabs.map((tabId) => {
+                    const tab = tabsList.find((t) => t.id === tabId)
+                    if (!tab) return null
+                    const Icon = tab.icon
+                    const isActive = activeTab === tab.id
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-start transition-all duration-150 group ${
+                          isActive
+                            ? tab.danger
+                              ? 'bg-rose-600 text-white shadow-md ring-2 ring-rose-500/20'
+                              : 'bg-primary text-primary-foreground shadow-md ring-2 ring-primary/20'
+                            : tab.danger
+                            ? 'text-rose-500 hover:bg-rose-500/10'
+                            : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+                        }`}
+                      >
+                        <Icon
+                          className={`w-4 h-4 flex-shrink-0 transition-transform group-hover:scale-110 ${
+                            tab.danger && !isActive ? 'text-rose-500' : ''
+                          }`}
+                        />
+                        <span className="flex-1 truncate">{isAr ? tab.labelAr : tab.labelEn}</span>
+                        {tab.badge && (
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-semibold ${
+                              isActive
+                                ? 'bg-white/20 text-white'
+                                : tab.danger
+                                ? 'bg-rose-500/20 text-rose-500'
+                                : 'bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            {tab.badge}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
+            </nav>
+          </aside>
+
+          {/* Active Tab Content Area */}
+          <div className="flex-1 min-w-0 w-full animate-in fade-in-50 duration-200" key={activeTab}>
 
         {/* ======================================================== */}
         {/* TAB 1: GENERAL (عام) */}
@@ -2668,6 +2772,8 @@ export function SettingsPage() {
             </div>
           </div>
         )}
+          </div>
+        </div>
       </div>
 
       {/* ======================================================== */}
