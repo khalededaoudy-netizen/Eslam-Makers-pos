@@ -232,29 +232,35 @@ class SalesService {
       const totalAmount = Number((taxableAmount + taxAmount).toFixed(2))
 
       // 7. Validate Payments
-      if (!input.payments || input.payments.length === 0) {
+      if ((!input.payments || input.payments.length === 0) && !input.customerId) {
         throw new Error('Payment information is required')
       }
 
       let totalPaid = 0
       let totalChange = 0
 
-      for (const p of input.payments) {
-        const amt = Number(p.amount)
-        if (isNaN(amt) || amt <= 0) {
-          throw new Error('Payment amount must be greater than zero')
-        }
-        totalPaid += amt
-        if (p.changeAmount && p.changeAmount > 0) {
-          totalChange += Number(p.changeAmount)
+      if (input.payments && input.payments.length > 0) {
+        for (const p of input.payments) {
+          const amt = Number(p.amount)
+          if (isNaN(amt) || amt <= 0) {
+            throw new Error('Payment amount must be greater than zero')
+          }
+          totalPaid += amt
+          if (p.changeAmount && p.changeAmount > 0) {
+            totalChange += Number(p.changeAmount)
+          }
         }
       }
 
       totalPaid = Number(totalPaid.toFixed(2))
       totalChange = Number(totalChange.toFixed(2))
 
+      let remainingDebt = 0
       if (totalPaid < totalAmount) {
-        throw new Error(`Insufficient payment. Total due is ${totalAmount} EGP, but paid ${totalPaid} EGP`)
+        if (!input.customerId) {
+          throw new Error(`Insufficient payment. Total due is ${totalAmount} EGP, but paid ${totalPaid} EGP. Customer selection is required for credit/partial sales.`)
+        }
+        remainingDebt = Number((totalAmount - totalPaid).toFixed(2))
       }
 
       // 8. Generate Sale Number & Sale ID
@@ -404,6 +410,15 @@ class SalesService {
         // E. Remove Held Cart if resumed/attached
         if (input.heldCartId) {
           await d.execute('DELETE FROM held_carts WHERE id = ?', [input.heldCartId])
+        }
+
+        // F. Update Customer Balance if credit / partial debt sale
+        if (input.customerId && remainingDebt > 0) {
+          await d.execute(`
+            UPDATE customers
+            SET balance = balance + ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE id = ?
+          `, [remainingDebt, input.customerId])
         }
       })
 

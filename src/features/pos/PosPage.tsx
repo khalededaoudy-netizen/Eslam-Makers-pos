@@ -922,6 +922,7 @@ export function PosPage() {
           isOpen={checkoutModalOpen}
           totalDue={totals.total}
           customerName={cart.customerName || undefined}
+          customer={cart.customer || null}
           itemsCount={cart.items.length}
           onClose={() => setCheckoutModalOpen(false)}
           onConfirmSale={handleConfirmSale}

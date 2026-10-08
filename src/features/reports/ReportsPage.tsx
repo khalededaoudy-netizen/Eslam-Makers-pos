@@ -24,6 +24,7 @@ import { ExpensesReportView } from './views/ExpensesReportView'
 import { PurchasesReportView } from './views/PurchasesReportView'
 import { InventoryReportView } from './views/InventoryReportView'
 import { CustomersReportView } from './views/CustomersReportView'
+import { DebtAgingReportView } from './views/DebtAgingReportView'
 import { SuppliersReportView } from './views/SuppliersReportView'
 import { CashShiftsReportView } from './views/CashShiftsReportView'
 import { PaymentsReportView } from './views/PaymentsReportView'
@@ -193,6 +194,10 @@ export function ReportsPage() {
       title: t('reports.customers'),
       subtitle: 'مبيعات العملاء وحسابات الديون والأرصدة المستحقة',
     },
+    customer_debts: {
+      title: isRtl ? 'تقرير أعمار ديون العملاء' : 'Customer Debt Aging Report',
+      subtitle: isRtl ? 'تحليل الشرائح الزمنية للمديونيات (30 / 60 / 90+ يوم) وجدول حسابات العملاء' : 'Customer aging buckets (30/60/90+ days) and receivables ledger',
+    },
     suppliers: {
       title: t('reports.suppliers'),
       subtitle: 'أداء الموردين وإجمالي التوريدات والأرصدة الدائنة',
@@ -290,6 +295,12 @@ export function ReportsPage() {
           {activeSection === 'customers' && (
             <CustomersReportView
               dateRange={dateRange}
+              formatCurrency={formatCurrency}
+            />
+          )}
+
+          {activeSection === 'customer_debts' && (
+            <DebtAgingReportView
               formatCurrency={formatCurrency}
             />
           )}

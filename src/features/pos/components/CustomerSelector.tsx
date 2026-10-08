@@ -103,6 +103,8 @@ export function CustomerSelector({
       name: c.name,
       customerCode: c.customer_code,
       phone: c.phone,
+      balance: c.balance,
+      creditLimit: c.credit_limit,
     })
     setIsOpen(false)
     setSearch('')

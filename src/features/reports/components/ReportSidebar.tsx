@@ -33,6 +33,7 @@ export function ReportSidebar({ activeSection, onSelectSection }: ReportSidebarP
     { id: 'purchases', label: t('reports.purchases'), icon: ShoppingBag },
     { id: 'inventory', label: t('reports.inventory'), icon: Package },
     { id: 'customers', label: t('reports.customers'), icon: Users },
+    { id: 'customer_debts', label: t('debts.agingReport', 'أعمار ديون العملاء'), icon: CreditCard },
     { id: 'suppliers', label: t('reports.suppliers'), icon: Building2 },
     { id: 'cash_shifts', label: t('reports.cashShifts'), icon: Wallet },
     { id: 'payments', label: t('reports.payments'), icon: CreditCard },

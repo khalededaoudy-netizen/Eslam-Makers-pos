@@ -956,6 +956,18 @@ CREATE INDEX IF NOT EXISTS backups_created_idx ON backups(created_at)
 
 migrations.push({ version: 14, sql: MIGRATION_014 })
 
+// ─── Migration 015: Customer Debt & Statement Indexes ─────────────────────────
+
+const MIGRATION_015 = `
+CREATE INDEX IF NOT EXISTS payments_customer_idx ON payments(customer_id)
+---STATEMENT---
+CREATE INDEX IF NOT EXISTS sales_customer_created_idx ON sales(customer_id, created_at)
+---STATEMENT---
+CREATE INDEX IF NOT EXISTS customers_balance_idx ON customers(balance)
+`
+
+migrations.push({ version: 15, sql: MIGRATION_015 })
+
 
 // ─── Seed Data: Insert after initial migration ───────────────────────────────
 

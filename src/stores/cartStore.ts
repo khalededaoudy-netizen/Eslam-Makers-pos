@@ -37,6 +37,8 @@ export interface CustomerSummary {
   name: string
   customerCode?: string | null
   phone?: string | null
+  balance?: number
+  creditLimit?: number
 }
 
 export type DiscountType = 'pct' | 'fixed'

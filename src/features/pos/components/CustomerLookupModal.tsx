@@ -133,6 +133,8 @@ export function CustomerLookupModal({
       name: customer.name,
       customerCode: customer.customer_code,
       phone: customer.phone,
+      balance: customer.balance,
+      creditLimit: customer.credit_limit,
     })
   }
 

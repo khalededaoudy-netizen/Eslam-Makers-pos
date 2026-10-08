@@ -21,6 +21,8 @@ import { customerService, Customer, CustomerType } from '@/services/customers'
 import { formatCurrency, formatDate } from '@/lib/formatters'
 import { useAuthStore, usePermission } from '@/stores/authStore'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import { CustomerStatementModal } from './CustomerStatementModal'
+import { RecordPaymentModal } from './RecordPaymentModal'
 
 interface CustomerDetailsModalProps {
   isOpen: boolean
@@ -54,6 +56,8 @@ export function CustomerDetailsModal({
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [isConfirmOpen, setIsConfirmOpen] = useState(false)
+  const [isStatementOpen, setIsStatementOpen] = useState(false)
+  const [isRecordPaymentOpen, setIsRecordPaymentOpen] = useState(false)
 
   const canEdit = isAdmin || can('update', 'customers')
   const canDelete = isAdmin || can('delete', 'customers')
@@ -141,6 +145,28 @@ export function CustomerDetailsModal({
           </div>
 
           <div className="flex items-center gap-2">
+            {customer && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setIsStatementOpen(true)}
+                  className="px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-foreground text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                >
+                  <FileText className="w-3.5 h-3.5 text-primary" />
+                  <span>{isArabic ? 'كشف حساب' : 'Statement'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsRecordPaymentOpen(true)}
+                  className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors"
+                >
+                  <CreditCard className="w-3.5 h-3.5" />
+                  <span>{isArabic ? 'تسجيل دفعة' : 'Record Payment'}</span>
+                </button>
+              </>
+            )}
+
             {customer && canEdit && onEdit && (
               <button
                 onClick={() => {
@@ -404,6 +430,33 @@ export function CustomerDetailsModal({
             : null as any
         }
       />
+
+      {/* Statement Modal */}
+      {isStatementOpen && customer && (
+        <CustomerStatementModal
+          isOpen={isStatementOpen}
+          customerId={customer.id}
+          onClose={() => setIsStatementOpen(false)}
+          onPaymentRecorded={async () => {
+            await loadCustomer()
+            onStatusChanged?.()
+          }}
+        />
+      )}
+
+      {/* Record Payment Modal */}
+      {isRecordPaymentOpen && customer && (
+        <RecordPaymentModal
+          isOpen={isRecordPaymentOpen}
+          customer={customer}
+          onClose={() => setIsRecordPaymentOpen(false)}
+          onSuccess={async () => {
+            setIsRecordPaymentOpen(false)
+            await loadCustomer()
+            onStatusChanged?.()
+          }}
+        />
+      )}
     </div>
   )
 }

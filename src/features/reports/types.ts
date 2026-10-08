@@ -13,6 +13,7 @@ export type ReportSection =
   | 'purchases'
   | 'inventory'
   | 'customers'
+  | 'customer_debts'
   | 'suppliers'
   | 'cash_shifts'
   | 'payments'

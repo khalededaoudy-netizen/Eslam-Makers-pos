@@ -22,6 +22,7 @@ import {
   RotateCcw,
   Tag,
   ShieldCheck,
+  FileText,
 } from 'lucide-react'
 import {
   customerService,
@@ -32,6 +33,8 @@ import {
 } from '@/services/customers'
 import { CustomerModal } from './components/CustomerModal'
 import { CustomerDetailsModal } from './components/CustomerDetailsModal'
+import { CustomerStatementModal } from './components/CustomerStatementModal'
+import { CustomerDebtsPage } from './CustomerDebtsPage'
 import { useAuthStore, usePermission } from '@/stores/authStore'
 import { formatCurrency, formatDate } from '@/lib/formatters'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
@@ -83,10 +86,14 @@ export function CustomersPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'archived'>('all')
   const [typeFilter, setTypeFilter] = useState<CustomerType | 'all'>('all')
 
+  // Active Tab
+  const [activeTab, setActiveTab] = useState<'customers' | 'debts'>('customers')
+
   // Modals state
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [detailsCustomerId, setDetailsCustomerId] = useState<string | null>(null)
+  const [statementCustomerId, setStatementCustomerId] = useState<string | null>(null)
 
   // Unified Status/Archive Confirmation State
   const [statusToggleTarget, setStatusToggleTarget] = useState<CustomerListItem | null>(null)
@@ -151,6 +158,45 @@ export function CustomersPage() {
           </p>
         </div>
 
+        {/* Tab Switcher: Directory vs Debts */}
+        <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-xl border border-border">
+          <button
+            type="button"
+            onClick={() => setActiveTab('customers')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+              activeTab === 'customers'
+                ? 'bg-card text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>{isArabic ? 'دليل العملاء' : 'Customer Directory'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('debts')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+              activeTab === 'debts'
+                ? 'bg-amber-500 text-white shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <DollarSign className="w-3.5 h-3.5" />
+            <span>{isArabic ? 'إدارة المديونيات والتحصيل' : 'Debts & Receivables'}</span>
+            {overview.withBalanceCount > 0 && (
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                  activeTab === 'debts'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-amber-500/15 text-amber-500'
+                }`}
+              >
+                {overview.withBalanceCount}
+              </span>
+            )}
+          </button>
+        </div>
+
         <div className="flex items-center gap-2">
           <button
             onClick={() => loadData()}
@@ -175,7 +221,12 @@ export function CustomersPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      {activeTab === 'debts' ? (
+        <div className="flex-1 overflow-y-auto p-6">
+          <CustomerDebtsPage />
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {/* KPI Metric Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="p-4 rounded-xl border border-border bg-card shadow-sm space-y-1">
@@ -426,6 +477,14 @@ export function CustomersPage() {
                         <td className="px-4 py-3 text-end">
                           <div className="flex items-center justify-end gap-1">
                             <button
+                              onClick={() => setStatementCustomerId(c.id)}
+                              className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
+                              title={isArabic ? 'كشف الحساب' : 'Account Statement'}
+                            >
+                              <FileText className="w-4 h-4" />
+                            </button>
+
+                            <button
                               onClick={() => setDetailsCustomerId(c.id)}
                               className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                               title={t('customers.details', 'عرض التفاصيل')}
@@ -478,6 +537,7 @@ export function CustomersPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Customer Create/Edit Modal */}
       <CustomerModal
@@ -498,6 +558,16 @@ export function CustomersPage() {
         }}
         onStatusChanged={loadData}
       />
+
+      {/* Customer Statement Modal */}
+      {statementCustomerId && (
+        <CustomerStatementModal
+          isOpen={!!statementCustomerId}
+          customerId={statementCustomerId}
+          onClose={() => setStatementCustomerId(null)}
+          onPaymentRecorded={loadData}
+        />
+      )}
 
       {/* Unified Status Change Confirmation Dialog */}
       <ConfirmDialog
