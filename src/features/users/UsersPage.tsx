@@ -4,9 +4,9 @@ import {
   UserCog, UserPlus, Search, Shield, Briefcase, ShoppingCart,
   CheckCircle2, XCircle, KeyRound, Pencil, UserX, UserCheck, Trash2,
   AlertTriangle, RefreshCw, X, Eye, EyeOff, Loader2,
-  ShieldCheck, Check, RotateCcw, Sliders, Lock
+  ShieldCheck, Check, RotateCcw, Sliders, Lock, CheckSquare, Square
 } from 'lucide-react'
-import { authService, UserListItem, RoleItem, SYSTEM_PERMISSIONS, PermissionDefinition } from '@/services/auth/authService'
+import { authService, UserListItem, RoleItem, SYSTEM_PERMISSIONS, PermissionDefinition, isTestUser } from '@/services/auth/authService'
 import { useAuthStore, usePermission } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { formatDate } from '@/lib/formatters'
@@ -37,6 +37,30 @@ export function UsersPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const [permissionManageUser, setPermissionManageUser] = useState<UserListItem | null>(null)
+
+  // Bulk actions & Cleanup dialogs
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
+  const [cleanupModalOpen, setCleanupModalOpen] = useState(false)
+  const [isCleaningTestUsers, setIsCleaningTestUsers] = useState(false)
+  const [bulkDeleteModalOpen, setBulkDeleteModalOpen] = useState(false)
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false)
+
+  // Step 5: Test accounts alert suppression (7-day reminder)
+  const [testAlertDismissed, setTestAlertDismissed] = useState(() => {
+    try {
+      const until = localStorage.getItem('makers_pos_test_cleanup_remind_until')
+      if (until && Number(until) > Date.now()) return true
+    } catch {}
+    return false
+  })
+
+  const handleRemindIn7Days = () => {
+    try {
+      const sevenDays = Date.now() + 7 * 24 * 60 * 60 * 1000
+      localStorage.setItem('makers_pos_test_cleanup_remind_until', String(sevenDays))
+      setTestAlertDismissed(true)
+    } catch {}
+  }
 
   // Form states - Create User
   const [createForm, setCreateForm] = useState({
@@ -220,8 +244,11 @@ export function UsersPage() {
   const stats = useMemo(() => {
     const total = users.length
     const active = users.filter(u => u.isActive).length
+    const inactive = total - active
     const admins = users.filter(u => u.roleName === 'admin' && u.isActive).length
-    return { total, active, admins }
+    const testUsersList = users.filter(u => isTestUser(u))
+    const testCount = testUsersList.length
+    return { total, active, inactive, admins, testCount, testUsersList }
   }, [users])
 
   // Filtered users
@@ -487,6 +514,82 @@ export function UsersPage() {
     }
   }
 
+  // Handlers - Bulk Selection & Cleanup
+  const handleToggleSelectAll = () => {
+    const selectable = filteredUsers
+      .filter(u => u.id !== currentUser?.id && !(u.roleName === 'admin' && stats.admins <= 1 && u.isActive))
+      .map(u => u.id)
+    if (selectedUserIds.length === selectable.length && selectable.length > 0) {
+      setSelectedUserIds([])
+    } else {
+      setSelectedUserIds(selectable)
+    }
+  }
+
+  const handleToggleUserSelect = (id: string) => {
+    setSelectedUserIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
+  }
+
+  const handleCleanupTestUsers = async () => {
+    if (!currentUser) return
+    setIsCleaningTestUsers(true)
+    try {
+      const res = await authService.cleanupTestUsers(currentUser)
+      if (res.success) {
+        setCleanupModalOpen(false)
+        setSelectedUserIds([])
+        setFeedback({
+          type: 'success',
+          message: t('users.cleanupTestUsersSuccess', 'تم حذف {{count}} مستخدم تجريبي بنجاح', { count: res.count })
+        })
+        await loadData()
+      } else {
+        setFeedback({
+          type: 'error',
+          message: res.error || t('auth.errors.system_error')
+        })
+      }
+    } catch (err: any) {
+      setFeedback({
+        type: 'error',
+        message: err.message || t('auth.errors.system_error')
+      })
+    } finally {
+      setIsCleaningTestUsers(false)
+    }
+  }
+
+  const handleExecuteBulkDelete = async () => {
+    if (!currentUser || selectedUserIds.length === 0) return
+    setIsBulkDeleting(true)
+    try {
+      const res = await authService.bulkDeleteUsers(selectedUserIds, currentUser)
+      if (res.success) {
+        setBulkDeleteModalOpen(false)
+        setSelectedUserIds([])
+        setFeedback({
+          type: 'success',
+          message: t('users.bulkDeleteSuccess', 'تم حذف {{count}} مستخدم بنجاح', { count: res.deletedCount + res.deactivatedCount })
+        })
+        await loadData()
+      } else {
+        setFeedback({
+          type: 'error',
+          message: res.error || t('auth.errors.system_error')
+        })
+      }
+    } catch (err: any) {
+      setFeedback({
+        type: 'error',
+        message: err.message || t('auth.errors.system_error')
+      })
+    } finally {
+      setIsBulkDeleting(false)
+    }
+  }
+
   // Helper: Role Icon & Badge
   const getRoleBadge = (roleName: string, roleDisplay: string) => {
     switch (roleName) {
@@ -586,36 +689,136 @@ export function UsersPage() {
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {/* Stats Row */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="glass p-4 rounded-xl border border-border flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground font-medium">{t('users.totalUsers', 'إجمالي المستخدمين')}</p>
-              <p className="text-2xl font-bold text-foreground mt-1">{stats.total}</p>
-            </div>
-            <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-              <UserCog className="w-5 h-5" />
+          {/* Card 1: Total Users & Breakdown */}
+          <div
+            onClick={() => setStatusFilter('ALL')}
+            className={`glass p-4 rounded-xl border transition-all cursor-pointer hover:border-primary/40 ${
+              statusFilter === 'ALL' ? 'border-primary ring-1 ring-primary/20' : 'border-border'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground font-medium">{t('users.totalUsers', 'إجمالي المستخدمين')}</p>
+                <p className="text-2xl font-bold text-foreground mt-1">{stats.total}</p>
+                <p className="text-xs text-muted-foreground mt-1 font-normal">
+                  {stats.active} {t('users.activeSummary', 'نشط')} • {stats.inactive} {t('users.inactiveSummary', 'معطّل')}
+                </p>
+              </div>
+              <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <UserCog className="w-5 h-5" />
+              </div>
             </div>
           </div>
 
-          <div className="glass p-4 rounded-xl border border-border flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground font-medium">{t('users.activeUsers', 'المستخدمين النشطين')}</p>
-              <p className="text-2xl font-bold text-emerald-400 mt-1">{stats.active}</p>
-            </div>
-            <div className="w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
-              <CheckCircle2 className="w-5 h-5" />
+          {/* Card 2: Active Users */}
+          <div
+            onClick={() => setStatusFilter('ACTIVE')}
+            className={`glass p-4 rounded-xl border transition-all cursor-pointer hover:border-emerald-500/40 ${
+              statusFilter === 'ACTIVE' ? 'border-emerald-500 ring-1 ring-emerald-500/20' : 'border-border'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground font-medium">{t('users.activeUsers', 'المستخدمين النشطين')}</p>
+                <p className="text-2xl font-bold text-emerald-400 mt-1">{stats.active}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {isRTL ? 'الحسابات المفعلة وجاهزة للعمل' : 'Operational & active accounts'}
+                </p>
+              </div>
+              <div className="w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
             </div>
           </div>
 
-          <div className="glass p-4 rounded-xl border border-border flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground font-medium">{t('users.adminCount', 'مسؤولي النظام')}</p>
-              <p className="text-2xl font-bold text-primary mt-1">{stats.admins}</p>
-            </div>
-            <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-              <Shield className="w-5 h-5" />
+          {/* Card 3: System Admins */}
+          <div
+            onClick={() => setRoleFilter(roleFilter === 'admin' ? 'ALL' : 'admin')}
+            className={`glass p-4 rounded-xl border transition-all cursor-pointer hover:border-primary/40 ${
+              roleFilter === 'admin' ? 'border-primary ring-1 ring-primary/20' : 'border-border'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground font-medium">{t('users.adminCount', 'مسؤولي النظام')}</p>
+                <p className="text-2xl font-bold text-primary mt-1">{stats.admins}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {isRTL ? 'صلاحيات الإدارة والتحكم الكامل' : 'Full system privileges'}
+                </p>
+              </div>
+              <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <Shield className="w-5 h-5" />
+              </div>
             </div>
           </div>
         </div>
+
+        {/* Test Users Alert Banner */}
+        {stats.testCount > 0 && isAdmin && !testAlertDismissed && (
+          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm text-foreground">
+                    {t('users.testUsersDetected', 'تم العثور على حسابات تجريبية')}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                    {stats.testCount} {t('users.testAccounts', 'حساب')}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {t('users.testUsersNotice', 'يحتوي النظام على حسابات تجريبية قديمة معطلة تؤثر على إجمالي العدادات. يمكنك حذفها نهائياً بضغطة زر واحدة مع أخذ نسخة احتياطية تلقائية.')}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+              <button
+                type="button"
+                onClick={handleRemindIn7Days}
+                className="px-3 py-1.5 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
+                {isRTL ? 'تذكيري بعد 7 أيام' : 'Remind in 7 days'}
+              </button>
+              <button
+                onClick={() => setCleanupModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{t('users.cleanupTestUsers', 'حذف المستخدمين التجريبيين')}</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Action Bar */}
+        {selectedUserIds.length > 0 && (
+          <div className="px-4 py-2.5 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-between gap-3 animate-fade-in">
+            <div className="flex items-center gap-2 text-xs font-semibold text-primary">
+              <CheckSquare className="w-4 h-4" />
+              <span>{t('users.selectedUsersCount', 'تم تحديد {{count}} مستخدم', { count: selectedUserIds.length })}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSelectedUserIds([])}
+                className="px-3 py-1 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
+                {t('users.deselectAll', 'إلغاء التحديد')}
+              </button>
+              {(isAdmin || can('delete', 'users')) && (
+                <button
+                  onClick={() => setBulkDeleteModalOpen(true)}
+                  className="px-3 py-1 rounded-lg bg-destructive hover:bg-destructive/90 text-destructive-foreground text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{t('users.bulkDelete', 'حذف المحدد')}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Filters & Search */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-card/60 p-3 rounded-xl border border-border">
@@ -660,6 +863,23 @@ export function UsersPage() {
             <table className="w-full text-start text-sm">
               <thead className="bg-muted/40 border-b border-border text-xs text-muted-foreground">
                 <tr>
+                  <th className="w-10 px-3 py-3 text-center">
+                    <input
+                      type="checkbox"
+                      checked={
+                        filteredUsers.length > 0 &&
+                        filteredUsers.every(u =>
+                          u.id === currentUser?.id ||
+                          (u.roleName === 'admin' && stats.admins <= 1 && u.isActive) ||
+                          selectedUserIds.includes(u.id)
+                        ) &&
+                        selectedUserIds.length > 0
+                      }
+                      onChange={handleToggleSelectAll}
+                      className="rounded border-border text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                      title={t('users.selectAll', 'تحديد الكل')}
+                    />
+                  </th>
                   <th className="px-5 py-3 text-start font-semibold">{t('users.username', 'المستخدم')}</th>
                   <th className="px-5 py-3 text-start font-semibold">{t('users.role', 'الدور')}</th>
                   <th className="px-5 py-3 text-start font-semibold">{t('users.status', 'الحالة')}</th>
@@ -671,7 +891,7 @@ export function UsersPage() {
               <tbody className="divide-y divide-border">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-muted-foreground">
+                    <td colSpan={7} className="py-12 text-center text-muted-foreground">
                       <div className="flex flex-col items-center gap-2">
                         <Loader2 className="w-6 h-6 animate-spin text-primary" />
                         <span>{t('common.loading', 'جاري التحميل...')}</span>
@@ -680,7 +900,7 @@ export function UsersPage() {
                   </tr>
                 ) : filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-muted-foreground">
+                    <td colSpan={7} className="py-12 text-center text-muted-foreground">
                       <UserCog className="w-10 h-10 mx-auto mb-2 opacity-30" />
                       <p className="text-sm font-medium">{t('common.noData', 'لا يوجد مستخدمين مطابقين للبحث')}</p>
                     </td>
@@ -689,9 +909,27 @@ export function UsersPage() {
                   filteredUsers.map(u => {
                     const isSelf = currentUser?.id === u.id
                     const isLastAdmin = u.roleName === 'admin' && stats.admins <= 1 && u.isActive
+                    const isTest = isTestUser(u)
+                    const isSelected = selectedUserIds.includes(u.id)
 
                     return (
-                      <tr key={u.id} className="hover:bg-muted/20 transition-colors">
+                      <tr
+                        key={u.id}
+                        className={`transition-colors ${
+                          !u.isActive ? 'opacity-50 bg-muted/15' : 'hover:bg-muted/20'
+                        } ${isSelected ? 'bg-primary/5' : ''}`}
+                      >
+                        {/* Selection Checkbox */}
+                        <td className="w-10 px-3 py-3.5 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            disabled={isSelf || isLastAdmin}
+                            onChange={() => handleToggleUserSelect(u.id)}
+                            className="rounded border-border text-primary focus:ring-primary w-4 h-4 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                          />
+                        </td>
+
                         {/* User Identity */}
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-3">
@@ -706,6 +944,16 @@ export function UsersPage() {
                                 {isSelf && (
                                   <span className="text-[10px] px-1.5 py-0.2 rounded bg-primary/15 text-primary font-medium">
                                     {t('users.you', 'أنت')}
+                                  </span>
+                                )}
+                                {!u.isActive && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted/80 text-muted-foreground font-semibold border border-border">
+                                    {t('users.inactiveBadge', 'معطّل')}
+                                  </span>
+                                )}
+                                {isTest && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 font-semibold border border-amber-500/25">
+                                    {t('users.testBadge', 'تجريبي')}
                                   </span>
                                 )}
                               </div>
@@ -738,9 +986,9 @@ export function UsersPage() {
                               {t('users.active', 'نشط')}
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
-                              <span className="w-2 h-2 rounded-full bg-muted-foreground/40" />
-                              {t('users.inactive', 'معطل')}
+                            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground font-medium px-2 py-0.5 rounded-full bg-muted border border-border">
+                              <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60" />
+                              {t('users.inactiveBadge', 'معطّل')}
                             </span>
                           )}
                         </td>
@@ -1585,6 +1833,113 @@ export function UsersPage() {
                   <span>{isRTL ? 'حفظ الصلاحيات المحددة' : 'Save Permissions'}</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: Cleanup Test Users ─────────────────────────── */}
+      {cleanupModalOpen && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="w-full max-w-md glass rounded-2xl border border-amber-500/30 shadow-2xl p-6 space-y-4 animate-scale-up">
+            <div className="flex items-center gap-3 text-amber-500">
+              <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-foreground">
+                  {t('users.cleanupTestUsersTitle', 'تأكيد حذف الحسابات التجريبية')}
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  {stats.testCount} {isRTL ? 'حساب تجريبي مطابق' : 'matching test accounts'}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {t(
+                'users.cleanupTestUsersDesc',
+                'سيتم حذف الحسابات التجريبية نهائياً من النظام. سيتم أخذ نسخة احتياطية تلقائياً قبل الحذف لضمان أمان البيانات.'
+              )}
+            </p>
+
+            <div className="max-h-48 overflow-y-auto space-y-1.5 p-3 rounded-xl bg-muted/40 border border-border text-xs">
+              {stats.testUsersList.map(tu => (
+                <div key={tu.id} className="flex items-center justify-between py-1 border-b border-border/40 last:border-0 font-mono">
+                  <span className="text-foreground truncate">@{tu.username}</span>
+                  <span className="text-muted-foreground text-[11px] font-sans">
+                    {tu.fullName} ({tu.isActive ? t('users.active', 'نشط') : t('users.inactiveBadge', 'معطّل')})
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                disabled={isCleaningTestUsers}
+                onClick={() => setCleanupModalOpen(false)}
+                className="px-4 py-2 rounded-xl border border-border hover:bg-muted text-xs font-semibold transition-all"
+              >
+                {t('common.cancel', 'إلغاء')}
+              </button>
+              <button
+                type="button"
+                disabled={isCleaningTestUsers}
+                onClick={handleCleanupTestUsers}
+                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all shadow-md disabled:opacity-50"
+              >
+                {isCleaningTestUsers && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{isCleaningTestUsers ? t('common.loading', 'جاري الحذف...') : t('users.cleanupTestUsers', 'حذف المستخدمين التجريبيين')}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: Bulk Delete Users ─────────────────────────── */}
+      {bulkDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="w-full max-w-md glass rounded-2xl border border-destructive/30 shadow-2xl p-6 space-y-4 animate-scale-up">
+            <div className="flex items-center gap-3 text-destructive">
+              <div className="p-2.5 rounded-xl bg-destructive/15 border border-destructive/30">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-foreground">
+                  {t('users.bulkDeleteTitle', 'تأكيد حذف المستخدمين المحددين')}
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  {selectedUserIds.length} {isRTL ? 'مستخدم محدد للحذف' : 'users selected for deletion'}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {t(
+                'users.bulkDeleteConfirm',
+                'هل أنت متأكد من حذف المستخدمين المحددين نهائياً؟ سيتم أخذ نسخة احتياطية أولاً.'
+              )}
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                disabled={isBulkDeleting}
+                onClick={() => setBulkDeleteModalOpen(false)}
+                className="px-4 py-2 rounded-xl border border-border hover:bg-muted text-xs font-semibold transition-all"
+              >
+                {t('common.cancel', 'إلغاء')}
+              </button>
+              <button
+                type="button"
+                disabled={isBulkDeleting}
+                onClick={handleExecuteBulkDelete}
+                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-destructive hover:bg-destructive/90 text-white text-xs font-bold transition-all shadow-md disabled:opacity-50"
+              >
+                {isBulkDeleting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{isBulkDeleting ? t('common.loading', 'جاري الحذف...') : t('users.bulkDelete', 'حذف المحدد')}</span>
+              </button>
             </div>
           </div>
         </div>

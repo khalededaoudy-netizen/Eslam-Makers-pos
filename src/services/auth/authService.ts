@@ -8,6 +8,68 @@ import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db/database'
 import { withTransaction } from '../db/transaction'
 import { auditService } from '../audit/auditService'
+import { backupService } from '../db/backupService'
+
+/**
+ * Checks if a user profile matches typical test/demo account patterns
+ */
+export function isTestUser(user: { username?: string | null; fullName?: string | null; email?: string | null }): boolean {
+  const username = (user.username || '').toLowerCase()
+  const fullName = (user.fullName || '').toLowerCase()
+  const email = (user.email || '').toLowerCase()
+
+  // Match username test patterns
+  if (
+    /^user[a-z]?_\d+/i.test(username) ||
+    /^expense_user_\d+/i.test(username) ||
+    /^final_tester_\d+/i.test(username) ||
+    /^test(?:er)?_\d+/i.test(username) ||
+    /^user[a-z]?$/i.test(username) ||
+    username.startsWith('user_') ||
+    username.startsWith('usera_') ||
+    username.startsWith('userb_') ||
+    username.startsWith('userc_') ||
+    username.startsWith('userd_') ||
+    username.startsWith('usere_') ||
+    username.startsWith('test_') ||
+    username.startsWith('final_tester_') ||
+    username.startsWith('expense_user_')
+  ) {
+    return true
+  }
+
+  // Match full name test patterns
+  if (
+    /^user\s+[a-z](\s|$|\d)/i.test(fullName) ||
+    fullName.includes('user a') ||
+    fullName.includes('user b') ||
+    fullName.includes('user c') ||
+    fullName.includes('user d') ||
+    fullName.includes('user e') ||
+    fullName.includes('expense user') ||
+    fullName.includes('final tester') ||
+    fullName.includes('test user')
+  ) {
+    return true
+  }
+
+  // Match email test patterns
+  if (
+    email.startsWith('expense_user_') ||
+    email.includes('expense_user_') ||
+    email.startsWith('usera_') ||
+    email.startsWith('userb_') ||
+    email.startsWith('userc_') ||
+    email.startsWith('userd_') ||
+    email.startsWith('usere_') ||
+    email.startsWith('test_') ||
+    email.startsWith('final_tester_')
+  ) {
+    return true
+  }
+
+  return false
+}
 
 export interface AuthUser {
   id: string
@@ -893,6 +955,196 @@ class AuthService {
     })
 
     return { success: true, mode: 'soft_deactivated', fallbackNotice: !hasHistory }
+  }
+
+  /** Return all identified test users in the system */
+  async getTestUsers(): Promise<UserListItem[]> {
+    const allUsers = await this.getUsers()
+    return allUsers.filter(u => isTestUser(u))
+  }
+
+  /** Permanently remove test users with automatic pre-cleanup backup */
+  async cleanupTestUsers(actor: AuthUser): Promise<{
+    success: boolean
+    count: number
+    backupPath?: string
+    error?: string
+    deletedUsers?: string[]
+  }> {
+    // 1. Permission check: admin or users:delete
+    if (actor.roleName !== 'admin' && !actor.permissions.includes('users:delete') && !actor.permissions.includes('*')) {
+      return { success: false, count: 0, error: 'permission_denied' }
+    }
+
+    const allUsers = await this.getUsers()
+    const testUsers = allUsers.filter(u => isTestUser(u))
+
+    // Filter out current logged in user and last active admin
+    let activeAdminCount = await this.countActiveAdmins()
+    const eligibleToDelete = testUsers.filter(u => {
+      if (u.id === actor.id) return false
+      if (u.roleName === 'admin' && u.isActive) {
+        if (activeAdminCount <= 1) return false
+        activeAdminCount--
+      }
+      return true
+    })
+
+    if (eligibleToDelete.length === 0) {
+      return { success: true, count: 0, deletedUsers: [] }
+    }
+
+    // 2. Pre-cleanup backup
+    let backupPath: string | undefined
+    try {
+      const backup = await backupService.createBackup({
+        type: 'manual',
+        userId: actor.id,
+        notes: 'Pre-test-users-cleanup automatic backup',
+      })
+      backupPath = backup.path || backup.file_path || backup.filename
+    } catch (bErr) {
+      console.warn('[authService] Pre-cleanup backup warning:', bErr)
+    }
+
+    // 3. Delete users with cascading deletion
+    const db = getDb()
+    let deletedCount = 0
+    const deletedUsernames: string[] = []
+
+    for (const u of eligibleToDelete) {
+      try {
+        await db.execute('DELETE FROM user_permissions WHERE user_id = ?', [u.id])
+        await db.execute('DELETE FROM sessions WHERE user_id = ?', [u.id])
+        await db.execute('DELETE FROM users WHERE id = ?', [u.id])
+        deletedCount++
+        deletedUsernames.push(u.username)
+      } catch (delErr) {
+        console.error(`[authService] Failed to delete test user ${u.username} (${u.id}):`, delErr)
+      }
+    }
+
+    // 4. Audit log
+    await auditService.log({
+      userId: actor.id,
+      userFullName: actor.fullName,
+      action: 'cleanup_test_users',
+      resource: 'users',
+      details: {
+        deletedCount,
+        deletedUsernames,
+        backupPath,
+      },
+    })
+
+    return {
+      success: true,
+      count: deletedCount,
+      backupPath,
+      deletedUsers: deletedUsernames,
+    }
+  }
+
+  /** Bulk delete multiple users with automatic pre-cleanup backup and referential safety */
+  async bulkDeleteUsers(
+    userIds: string[],
+    actor: AuthUser
+  ): Promise<{
+    success: boolean
+    deletedCount: number
+    deactivatedCount: number
+    skippedCount: number
+    backupPath?: string
+    error?: string
+  }> {
+    // 1. Permission check
+    if (actor.roleName !== 'admin' && !actor.permissions.includes('users:delete') && !actor.permissions.includes('*')) {
+      return { success: false, deletedCount: 0, deactivatedCount: 0, skippedCount: 0, error: 'permission_denied' }
+    }
+
+    const uniqueIds = Array.from(new Set(userIds)).filter(id => id !== actor.id)
+    if (uniqueIds.length === 0) {
+      return { success: true, deletedCount: 0, deactivatedCount: 0, skippedCount: userIds.length }
+    }
+
+    // 2. Pre-deletion backup
+    let backupPath: string | undefined
+    try {
+      const backup = await backupService.createBackup({
+        type: 'manual',
+        userId: actor.id,
+        notes: 'Pre-bulk-users-delete automatic backup',
+      })
+      backupPath = backup.path || backup.file_path || backup.filename
+    } catch (bErr) {
+      console.warn('[authService] Pre-bulk-delete backup warning:', bErr)
+    }
+
+    const db = getDb()
+    let deletedCount = 0
+    let deactivatedCount = 0
+    let skippedCount = userIds.length - uniqueIds.length
+
+    for (const uid of uniqueIds) {
+      try {
+        const targetUsers = await db.select<Array<{ id: string; role_name: string; is_active: number; username: string }>>(
+          `SELECT u.id, r.name as role_name, u.is_active, u.username
+           FROM users u
+           JOIN roles r ON r.id = u.role_id
+           WHERE u.id = ?`,
+          [uid]
+        )
+        if (targetUsers.length === 0) {
+          skippedCount++
+          continue
+        }
+        const target = targetUsers[0]
+
+        // Guard: don't delete last active admin
+        if (target.role_name === 'admin' && target.is_active) {
+          const adminCount = await this.countActiveAdmins()
+          if (adminCount <= 1) {
+            skippedCount++
+            continue
+          }
+        }
+
+        const hasHistory = await this.hasHistoricalReferences(uid)
+        if (!hasHistory || isTestUser({ username: target.username })) {
+          await db.execute('DELETE FROM user_permissions WHERE user_id = ?', [uid])
+          await db.execute('DELETE FROM sessions WHERE user_id = ?', [uid])
+          await db.execute('DELETE FROM users WHERE id = ?', [uid])
+          deletedCount++
+        } else {
+          // Soft deactivate if historical references exist
+          await db.execute(
+            `UPDATE users SET is_active = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`,
+            [uid]
+          )
+          await db.execute('DELETE FROM sessions WHERE user_id = ?', [uid])
+          deactivatedCount++
+        }
+      } catch (err) {
+        console.error(`[authService] Error deleting user ${uid}:`, err)
+        skippedCount++
+      }
+    }
+
+    await auditService.log({
+      userId: actor.id,
+      userFullName: actor.fullName,
+      action: 'bulk_delete_users',
+      resource: 'users',
+      details: { deletedCount, deactivatedCount, skippedCount, backupPath },
+    })
+
+    return {
+      success: true,
+      deletedCount,
+      deactivatedCount,
+      skippedCount,
+      backupPath,
+    }
   }
 
   /** Clean expired sessions */

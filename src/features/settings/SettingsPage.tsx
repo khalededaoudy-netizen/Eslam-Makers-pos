@@ -32,6 +32,7 @@ import {
   CheckCircle,
   XCircle,
   Trash2,
+  UserX,
 } from 'lucide-react'
 import { useSettingsStore, Language, Theme, PaperWidth } from '@/stores/settingsStore'
 import { useAuthStore, usePermission } from '@/stores/authStore'
@@ -39,6 +40,7 @@ import { backupService, BackupRecord } from '@/services/db/backupService'
 import { autoBackupService } from '@/services/db/autoBackupService'
 import { settingsService } from '@/services/settings/settingsService'
 import { resetOperationalData, getOperationalDataCounts } from '@/services/db/resetService'
+import { authService, UserListItem } from '@/services/auth/authService'
 import { logger } from '@/services/db/loggerService'
 import { invoke } from '@tauri-apps/api/core'
 import { openExternalUrl, DEVELOPER_LINKEDIN_URL } from '@/lib/openUrl'
@@ -176,11 +178,56 @@ export function SettingsPage() {
     }
   }
 
+  // Test Users Cleanup State
+  const [testUsersList, setTestUsersList] = useState<UserListItem[]>([])
+  const [loadingTestUsers, setLoadingTestUsers] = useState(false)
+  const [cleanupTestUsersModalOpen, setCleanupTestUsersModalOpen] = useState(false)
+  const [isCleaningTestUsers, setIsCleaningTestUsers] = useState(false)
+
+  const loadTestUsers = async () => {
+    setLoadingTestUsers(true)
+    try {
+      const list = await authService.getTestUsers()
+      setTestUsersList(list)
+    } catch (err) {
+      console.error('Failed to load test users:', err)
+    } finally {
+      setLoadingTestUsers(false)
+    }
+  }
+
   useEffect(() => {
     if (activeTab === 'advanced') {
       loadOperationalCounts()
+      loadTestUsers()
     }
   }, [activeTab])
+
+  const handleExecuteCleanupTestUsers = async () => {
+    if (!user) return
+    setIsCleaningTestUsers(true)
+    setErrorMsg('')
+    setSuccessMsg('')
+    try {
+      const res = await authService.cleanupTestUsers(user)
+      if (res.success) {
+        setSuccessMsg(
+          settings.language === 'ar'
+            ? `تم حذف ${res.count} مستخدم تجريبي بنجاح وإنشاء نسخة احتياطية إجبارية!`
+            : `Successfully removed ${res.count} test users and created an automatic backup!`
+        )
+        setCleanupTestUsersModalOpen(false)
+        await loadTestUsers()
+        await loadBackups()
+      } else {
+        setErrorMsg(res.error || 'Failed to cleanup test users')
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Failed to cleanup test users')
+    } finally {
+      setIsCleaningTestUsers(false)
+    }
+  }
 
   const handleExecuteReset = async () => {
     if (resetConfirmationInput.trim().toUpperCase() !== 'RESET') {
@@ -1549,6 +1596,66 @@ export function SettingsPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Test Users Cleanup Amber Card */}
+                <div className="bg-amber-500/5 dark:bg-amber-950/20 border-2 border-amber-500/30 rounded-2xl p-6 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between flex-wrap gap-4 pb-4 border-b border-amber-500/20">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                        <UserX className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-bold text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                          <span>{settings.language === 'ar' ? 'حذف وتطهير المستخدمين التجريبيين' : 'Cleanup Test & Demo Users'}</span>
+                        </h2>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {settings.language === 'ar'
+                            ? 'إزالة الحسابات التجريبية القديمة نهائياً وضبط عدادات النظام مع أخذ نسخة احتياطية تلقائياً'
+                            : 'Permanently remove legacy test/demo user accounts with automatic pre-cleanup backup.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={loadTestUsers}
+                        disabled={loadingTestUsers}
+                        className="p-2 rounded-xl border border-border hover:bg-muted text-muted-foreground hover:text-foreground text-xs transition-all"
+                        title={t('common.refresh', 'تحديث')}
+                      >
+                        <RefreshCw className={`w-4 h-4 ${loadingTestUsers ? 'animate-spin' : ''}`} />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setCleanupTestUsersModalOpen(true)}
+                        disabled={testUsersList.length === 0}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span>{settings.language === 'ar' ? 'حذف المستخدمين التجريبيين' : 'Cleanup Test Users'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Summary Box */}
+                  <div className="flex items-center justify-between p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs">
+                    <div className="flex items-center gap-2 font-medium text-amber-700 dark:text-amber-300">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                      <span>
+                        {settings.language === 'ar'
+                          ? `عدد الحسابات التجريبية المكتشفة حالياً في النظام: ${testUsersList.length}`
+                          : `Detected test accounts currently in database: ${testUsersList.length}`}
+                      </span>
+                    </div>
+                    {testUsersList.length > 0 && (
+                      <span className="font-mono font-bold px-2.5 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                        {testUsersList.length}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1644,6 +1751,70 @@ export function SettingsPage() {
                         {isResetting
                           ? (settings.language === 'ar' ? 'جاري النسخ والمسح...' : 'Resetting...')
                           : (settings.language === 'ar' ? 'تأكيد المسح بالكامل' : 'Confirm & Wipe')}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Test Users Cleanup Modal Dialog */}
+            {cleanupTestUsersModalOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                <div className="bg-card border-2 border-amber-500/40 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-5">
+                  <div className="flex items-center gap-3 text-amber-600">
+                    <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/30">
+                      <Trash2 className="w-6 h-6 text-amber-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-foreground">
+                        {settings.language === 'ar' ? 'تأكيد حذف المستخدمين التجريبيين' : 'Confirm Test Users Cleanup'}
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {settings.language === 'ar'
+                          ? `${testUsersList.length} مستخدم مطابق للأنماط التجريبية`
+                          : `${testUsersList.length} accounts matching test patterns`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {settings.language === 'ar'
+                      ? 'سيتم حذف الحسابات التجريبية نهائياً من قاعدة البيانات (مع إلغاء الصلاحيات والجلسات). سيقوم النظام تلقائياً بإنشاء نسخة احتياطية لحماية البيانات قبل الحذف.'
+                      : 'Matched test accounts will be permanently deleted from users, permissions, and sessions. A backup snapshot will be created before deletion.'}
+                  </p>
+
+                  <div className="max-h-48 overflow-y-auto space-y-1 p-3 rounded-xl bg-muted/40 border border-border text-xs">
+                    {testUsersList.map(u => (
+                      <div key={u.id} className="flex items-center justify-between py-1 border-b border-border/40 last:border-0 font-mono">
+                        <span className="text-foreground truncate">@{u.username}</span>
+                        <span className="text-muted-foreground text-[11px] font-sans">
+                          {u.fullName} ({u.isActive ? (settings.language === 'ar' ? 'نشط' : 'Active') : (settings.language === 'ar' ? 'معطّل' : 'Inactive')})
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+                    <button
+                      type="button"
+                      disabled={isCleaningTestUsers}
+                      onClick={() => setCleanupTestUsersModalOpen(false)}
+                      className="px-4 py-2 rounded-xl border border-border text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
+                    >
+                      {t('common.cancel', 'إلغاء')}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isCleaningTestUsers || testUsersList.length === 0}
+                      onClick={handleExecuteCleanupTestUsers}
+                      className="flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 transition-all shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {isCleaningTestUsers && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                      <span>
+                        {isCleaningTestUsers
+                          ? (settings.language === 'ar' ? 'جاري الحذف والنسخ...' : 'Cleaning up...')
+                          : (settings.language === 'ar' ? 'تأكيد الحذف نهائياً' : 'Confirm & Delete')}
                       </span>
                     </button>
                   </div>
