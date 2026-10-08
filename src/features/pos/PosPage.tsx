@@ -46,6 +46,8 @@ import { CustomerLookupModal } from './components/CustomerLookupModal'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { CartSummary } from './components/CartSummary'
 import { HeldCartsModal } from './components/HeldCartsModal'
+import { HoldCartPromptModal, HoldCartPromptResult } from './components/HoldCartPromptModal'
+import { EditHeldCartCustomerModal } from './components/EditHeldCartCustomerModal'
 import { CheckoutModal } from '@/features/sales/components/CheckoutModal'
 import { ReceiptModal } from '@/features/sales/components/ReceiptModal'
 import { QuickShiftModal } from './components/QuickShiftModal'
@@ -79,6 +81,8 @@ export function PosPage() {
   // Held Carts, Customer Lookup & Checkout
   const [heldCarts, setHeldCarts] = useState<HeldCart[]>([])
   const [isHeldModalOpen, setIsHeldModalOpen] = useState(false)
+  const [holdPromptOpen, setHoldPromptOpen] = useState(false)
+  const [editingHeldCart, setEditingHeldCart] = useState<HeldCart | null>(null)
   const [stockNotice, setStockNotice] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'warning'; message: string } | null>(null)
   const [customerLookupOpen, setCustomerLookupOpen] = useState(false)
@@ -267,10 +271,16 @@ export function PosPage() {
     [cart]
   )
 
-  // Hold Cart Handler
-  const handleHoldCart = async () => {
+  // Hold Cart Handler — opens prompt for optional customer & notes
+  const handleHoldCart = () => {
     if (cart.items.length === 0) return
     if (!user) return
+    setHoldPromptOpen(true)
+  }
+
+  // Confirm Hold Cart from Prompt Modal
+  const handleConfirmHoldPrompt = async (data: HoldCartPromptResult) => {
+    if (cart.items.length === 0 || !user) return
 
     try {
       const summary = posService.calculateTotals(
@@ -285,8 +295,10 @@ export function PosPage() {
         {
           cashierId: user.id,
           cashierName: user.fullName,
-          customerId: cart.customerId,
-          customerName: cart.customerName,
+          customerId: data.customerId || cart.customerId || null,
+          customerName: data.customerName || cart.customerName || null,
+          customerPhone: data.customerPhone || cart.customer?.phone || null,
+          customerResolvedId: data.customerId || cart.customerId || null,
           items: cart.items,
           subtotal: summary.subtotal,
           discountAmount: summary.cartDiscountAmount,
@@ -294,12 +306,13 @@ export function PosPage() {
           discountType: cart.discountType,
           taxAmount: summary.taxAmount,
           total: summary.total,
-          notes: cart.notes,
+          notes: data.notes || cart.notes || null,
         },
         user
       )
 
       cart.clearCart()
+      setHoldPromptOpen(false)
       await refreshShiftAndHeld()
       setFeedback({
         type: 'success',
@@ -328,10 +341,11 @@ export function PosPage() {
         heldCart.discount_amount,
         restoredDiscountType
       )
-      if (heldCart.customer_id && heldCart.customer_name) {
+      if (heldCart.customer_name || heldCart.customer_id) {
         cart.setCustomer({
-          id: heldCart.customer_id,
-          name: heldCart.customer_name,
+          id: heldCart.customer_id || '',
+          name: heldCart.customer_name || '',
+          phone: heldCart.customer_phone || null,
         })
       } else {
         cart.setCustomer(null)
@@ -351,6 +365,75 @@ export function PosPage() {
         message: err?.message || (isArabic ? 'حدث خطأ أثناء استرجاع الفاتورة' : 'Error resuming cart'),
       })
     }
+  }
+
+  // Update Customer on Held Cart
+  const handleSaveHeldCartCustomer = async (
+    heldCartId: string,
+    data: {
+      customerId?: string | null
+      customerName?: string | null
+      customerPhone?: string | null
+      notes?: string | null
+    }
+  ) => {
+    try {
+      await posService.updateHeldCartCustomer(heldCartId, data, user || undefined)
+      await refreshShiftAndHeld()
+      setFeedback({
+        type: 'success',
+        message: isArabic ? 'تم تحديث بيانات العميل للفاتورة المعلقة بنجاح' : 'Held cart customer updated successfully',
+      })
+    } catch (err: any) {
+      setFeedback({
+        type: 'error',
+        message: err?.message || (isArabic ? 'حدث خطأ أثناء تعديل بيانات العميل' : 'Error updating held cart customer'),
+      })
+      throw err
+    }
+  }
+
+  // Print Preview for Held Cart
+  const handlePrintHeldCartPreview = (heldCart: HeldCart) => {
+    const settingsStore = useSettingsStore.getState()
+    const items = (heldCart.items || []).map(item => ({
+      name: item.productNameAr || item.productName,
+      sku: item.sku,
+      barcode: item.barcode || null,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      discountAmount: item.discountAmount || 0,
+      subtotal: item.subtotal,
+    }))
+
+    const receiptData: ReceiptData = {
+      storeName: settingsStore.storeName || 'MAKERS',
+      storeSubtitle: 'فاتورة معلقة (مسودة طلب)',
+      storePhone: settingsStore.storePhone,
+      storeAddress: settingsStore.storeAddress,
+      receiptHeader: settingsStore.receiptHeader,
+      receiptFooter: 'فاتورة معلقة — لم يتم السداد بعد',
+      invoiceNumber: `HELD-${heldCart.id.slice(0, 8).toUpperCase()}`,
+      date: heldCart.held_at,
+      cashierName: heldCart.cashier_name || 'الكاشير',
+      customerName: heldCart.customer_name || undefined,
+      customerPhone: heldCart.customer_phone || undefined,
+      items,
+      itemsCount: items.length,
+      totalQuantity: items.reduce((sum, it) => sum + it.quantity, 0),
+      subtotal: heldCart.subtotal,
+      discountAmount: heldCart.discount_amount,
+      taxAmount: heldCart.tax_amount,
+      taxRate: 0,
+      total: heldCart.total,
+      paidAmount: 0,
+      changeAmount: 0,
+      payments: [],
+      notes: heldCart.notes || undefined,
+    }
+
+    setActiveReceipt(receiptData)
+    setReceiptModalOpen(true)
   }
 
   // Resume Cart Handler
@@ -893,6 +976,34 @@ export function PosPage() {
           onClose={() => setIsHeldModalOpen(false)}
           onResumeCart={handleResumeCart}
           onDeleteCart={handleDeleteHeldCart}
+          onEditCustomer={(cart) => setEditingHeldCart(cart)}
+          onPrintPreview={handlePrintHeldCartPreview}
+        />
+      )}
+
+      {/* Hold Cart Prompt Modal (when cashier clicks Hold Cart) */}
+      {holdPromptOpen && (
+        <HoldCartPromptModal
+          isOpen={holdPromptOpen}
+          onClose={() => setHoldPromptOpen(false)}
+          onConfirm={handleConfirmHoldPrompt}
+          initialCustomerName={cart.customerName}
+          initialCustomerPhone={cart.customer?.phone}
+          initialCustomerId={cart.customerId}
+          initialNotes={cart.notes}
+          itemsCount={cart.itemsCount}
+          totalAmount={totals.total}
+          currencySymbol={currencySymbol}
+        />
+      )}
+
+      {/* Edit Held Cart Customer Modal */}
+      {editingHeldCart && (
+        <EditHeldCartCustomerModal
+          isOpen={!!editingHeldCart}
+          heldCart={editingHeldCart}
+          onClose={() => setEditingHeldCart(null)}
+          onSave={handleSaveHeldCartCustomer}
         />
       )}
 

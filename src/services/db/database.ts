@@ -145,7 +145,16 @@ async function runMigrations() {
         .filter(Boolean)
 
       for (const stmt of statements) {
-        await d.execute(stmt)
+        try {
+          await d.execute(stmt)
+        } catch (err: any) {
+          const msg = String(err?.message || err).toLowerCase()
+          if (msg.includes('duplicate column name')) {
+            console.warn(`[migration v${migration.version}] Column already exists, skipping statement:`, stmt)
+          } else {
+            throw err
+          }
+        }
       }
 
       await d.execute('INSERT INTO _migrations (version) VALUES (?)', [migration.version])
@@ -728,6 +737,8 @@ CREATE TABLE IF NOT EXISTS held_carts (
   cashier_name    TEXT,
   customer_id     TEXT,
   customer_name   TEXT,
+  customer_phone  TEXT,
+  customer_id_resolved TEXT,
   cart_data       TEXT NOT NULL,
   subtotal        REAL NOT NULL DEFAULT 0,
   discount_amount REAL NOT NULL DEFAULT 0,
@@ -741,6 +752,8 @@ CREATE TABLE IF NOT EXISTS held_carts (
 CREATE INDEX IF NOT EXISTS held_carts_cashier_idx ON held_carts(cashier_id)
 ---STATEMENT---
 CREATE INDEX IF NOT EXISTS held_carts_customer_idx ON held_carts(customer_id)
+---STATEMENT---
+CREATE INDEX IF NOT EXISTS held_carts_customer_phone_idx ON held_carts(customer_phone)
 ---STATEMENT---
 CREATE INDEX IF NOT EXISTS held_carts_held_at_idx ON held_carts(held_at)
 `
@@ -969,6 +982,18 @@ CREATE INDEX IF NOT EXISTS customers_balance_idx ON customers(balance)
 `
 
 migrations.push({ version: 15, sql: MIGRATION_015 })
+
+// ─── Migration 016: Held Carts Customer Info & Phone ─────────────────────────
+
+const MIGRATION_016 = `
+ALTER TABLE held_carts ADD COLUMN customer_phone TEXT
+---STATEMENT---
+ALTER TABLE held_carts ADD COLUMN customer_id_resolved TEXT
+---STATEMENT---
+CREATE INDEX IF NOT EXISTS held_carts_customer_phone_idx ON held_carts(customer_phone)
+`
+
+migrations.push({ version: 16, sql: MIGRATION_016 })
 
 
 // ─── Seed Data: Insert after initial migration ───────────────────────────────

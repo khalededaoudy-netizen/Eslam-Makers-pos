@@ -372,10 +372,12 @@ class PosService {
     await db.execute(`
       INSERT INTO held_carts (
         id, cashier_id, cashier_name, customer_id, customer_name,
+        customer_phone, customer_id_resolved,
         cart_data, subtotal, discount_amount, discount_pct, discount_type,
         tax_amount, total, notes, held_at, created_at
       ) VALUES (
         ?, ?, ?, ?, ?,
+        ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
       )
@@ -385,6 +387,8 @@ class PosService {
       input.cashierName || user?.fullName || null,
       input.customerId || null,
       input.customerName || null,
+      input.customerPhone || null,
+      input.customerResolvedId || input.customerId || null,
       cartData,
       input.subtotal,
       input.discountAmount,
@@ -515,6 +519,63 @@ class PosService {
       resource: 'pos',
       resourceId: heldCartId,
     })
+  }
+
+  /**
+   * Update customer information and notes on an existing held cart
+   */
+  async updateHeldCartCustomer(
+    heldCartId: string,
+    customerData: {
+      customerId?: string | null
+      customerName?: string | null
+      customerPhone?: string | null
+      notes?: string | null
+    },
+    user?: UserContext
+  ): Promise<HeldCart> {
+    const db = getDb()
+    await db.execute(
+      `UPDATE held_carts
+       SET customer_id = ?,
+           customer_name = ?,
+           customer_phone = ?,
+           customer_id_resolved = ?,
+           notes = ?
+       WHERE id = ?`,
+      [
+        customerData.customerId || null,
+        customerData.customerName || null,
+        customerData.customerPhone || null,
+        customerData.customerId || null,
+        customerData.notes ?? null,
+        heldCartId,
+      ]
+    )
+
+    await auditService.log({
+      userId: user?.id,
+      userFullName: user?.fullName,
+      action: 'update_held_cart_customer',
+      resource: 'pos',
+      resourceId: heldCartId,
+      details: {
+        customerName: customerData.customerName,
+        customerPhone: customerData.customerPhone,
+      },
+    })
+
+    const rows = await db.select<HeldCart[]>('SELECT * FROM held_carts WHERE id = ?', [heldCartId])
+    if (!rows || rows.length === 0) {
+      throw new Error('Held cart not found after update')
+    }
+    const cart = rows[0]
+    try {
+      cart.items = JSON.parse(cart.cart_data)
+    } catch {
+      cart.items = []
+    }
+    return cart
   }
 }
 

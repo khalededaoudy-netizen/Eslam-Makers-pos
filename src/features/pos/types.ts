@@ -59,6 +59,8 @@ export interface HeldCart {
   cashier_name: string | null
   customer_id: string | null
   customer_name: string | null
+  customer_phone?: string | null
+  customer_id_resolved?: string | null
   cart_data: string
   subtotal: number
   discount_amount: number
@@ -77,6 +79,8 @@ export interface CreateHeldCartInput {
   cashierName?: string | null
   customerId?: string | null
   customerName?: string | null
+  customerPhone?: string | null
+  customerResolvedId?: string | null
   items: PosCartItem[]
   subtotal: number
   discountAmount: number

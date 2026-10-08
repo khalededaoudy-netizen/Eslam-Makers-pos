@@ -67,3 +67,47 @@ export function formatQuantity(qty: number, allowDecimal: boolean): string {
 export function today(): string {
   return new Date().toISOString().split('T')[0]
 }
+
+/** Format ISO date string into human-readable relative time (e.g. "منذ ساعتين", "قبل 15 دقيقة") */
+export function formatRelativeTime(isoString: string, isArabic = true): string {
+  const date = new Date(isoString)
+  if (isNaN(date.getTime())) return '—'
+
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffSec = Math.max(0, Math.floor(diffMs / 1000))
+  const diffMin = Math.floor(diffSec / 60)
+  const diffHours = Math.floor(diffMin / 60)
+  const diffDays = Math.floor(diffHours / 24)
+
+  if (isArabic) {
+    if (diffMin < 1) return 'منذ لحظات'
+    if (diffMin === 1) return 'منذ دقيقة'
+    if (diffMin === 2) return 'منذ دقيقتين'
+    if (diffMin < 11) return `منذ ${diffMin} دقائق`
+    if (diffMin < 60) return `منذ ${diffMin} دقيقة`
+
+    if (diffHours === 1) return 'منذ ساعة'
+    if (diffHours === 2) return 'منذ ساعتين'
+    if (diffHours < 11) return `منذ ${diffHours} ساعات`
+    if (diffHours < 24) return `منذ ${diffHours} ساعة`
+
+    if (diffDays === 1) return 'منذ يوم'
+    if (diffDays === 2) return 'منذ يومين'
+    if (diffDays < 11) return `منذ ${diffDays} أيام`
+    if (diffDays < 30) return `منذ ${diffDays} يوماً`
+
+    return formatDate(isoString, true)
+  }
+
+  // English fallback
+  if (diffMin < 1) return 'Just now'
+  if (diffMin === 1) return '1 minute ago'
+  if (diffMin < 60) return `${diffMin} minutes ago`
+  if (diffHours === 1) return '1 hour ago'
+  if (diffHours < 24) return `${diffHours} hours ago`
+  if (diffDays === 1) return '1 day ago'
+  if (diffDays < 30) return `${diffDays} days ago`
+
+  return formatDate(isoString, true)
+}
