@@ -5,6 +5,8 @@ import {
   RefreshCw,
   Download,
   Printer,
+  FileText,
+  MessageSquare,
   ChevronDown,
 } from 'lucide-react'
 import { ReportDateRange, ReportDatePreset } from '../types'
@@ -17,7 +19,10 @@ interface ReportHeaderProps {
   onDateRangeChange: (range: ReportDateRange) => void
   onRefresh: () => void
   onExportCsv?: () => void
+  onExportPdf?: () => void
   onPrint?: () => void
+  onPrintA4?: () => void
+  onShareWhatsApp?: () => void
   loading?: boolean
 }
 
@@ -28,7 +33,10 @@ export function ReportHeader({
   onDateRangeChange,
   onRefresh,
   onExportCsv,
+  onExportPdf,
   onPrint,
+  onPrintA4,
+  onShareWhatsApp,
   loading = false,
 }: ReportHeaderProps) {
   const { t, i18n } = useTranslation()
@@ -54,6 +62,8 @@ export function ReportHeader({
     onDateRangeChange(next)
   }
 
+  const handlePrintClick = onPrintA4 || onPrint
+
   return (
     <div className="p-4 md:p-6 border-b border-border bg-card/20 space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -67,30 +77,54 @@ export function ReportHeader({
             <button
               onClick={onExportCsv}
               disabled={loading}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-card text-foreground hover:bg-accent text-xs font-semibold transition-colors disabled:opacity-50 shadow-sm"
-              title={t('reports.exportCsv')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card text-foreground hover:bg-accent text-xs font-semibold transition-colors disabled:opacity-50 shadow-sm"
+              title={isRtl ? 'تصدير بصيغة CSV' : 'Export CSV'}
             >
               <Download className="w-3.5 h-3.5 text-primary" />
-              <span>{t('reports.exportCsv')}</span>
+              <span>{isRtl ? 'تصدير CSV' : 'Export CSV'}</span>
             </button>
           )}
 
-          {onPrint && (
+          {onExportPdf && (
             <button
-              onClick={onPrint}
+              onClick={onExportPdf}
               disabled={loading}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-card text-foreground hover:bg-accent text-xs font-semibold transition-colors disabled:opacity-50 shadow-sm"
-              title={t('reports.print')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card text-foreground hover:bg-accent text-xs font-semibold transition-colors disabled:opacity-50 shadow-sm"
+              title={isRtl ? 'تحميل كملف PDF' : 'Download PDF'}
             >
-              <Printer className="w-3.5 h-3.5 text-muted-foreground" />
-              <span>{t('reports.print')}</span>
+              <FileText className="w-3.5 h-3.5 text-rose-500" />
+              <span>{isRtl ? 'تحميل PDF' : 'Download PDF'}</span>
+            </button>
+          )}
+
+          {handlePrintClick && (
+            <button
+              onClick={handlePrintClick}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card text-foreground hover:bg-accent text-xs font-semibold transition-colors disabled:opacity-50 shadow-sm"
+              title={isRtl ? 'طباعة تقرير A4' : 'Print A4'}
+            >
+              <Printer className="w-3.5 h-3.5 text-blue-500" />
+              <span>{isRtl ? 'طباعة A4' : 'Print A4'}</span>
+            </button>
+          )}
+
+          {onShareWhatsApp && (
+            <button
+              onClick={onShareWhatsApp}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 text-xs font-semibold transition-colors disabled:opacity-50 shadow-sm"
+              title={isRtl ? 'مشاركة عبر واتساب' : 'Share WhatsApp'}
+            >
+              <MessageSquare className="w-3.5 h-3.5 text-emerald-500" />
+              <span>{isRtl ? 'واتساب' : 'WhatsApp'}</span>
             </button>
           )}
 
           <button
             onClick={onRefresh}
             disabled={loading}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-card text-foreground hover:bg-accent text-xs font-semibold transition-colors disabled:opacity-50 shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card text-foreground hover:bg-accent text-xs font-semibold transition-colors disabled:opacity-50 shadow-sm"
             title={t('reports.refresh')}
           >
             <RefreshCw className={`w-3.5 h-3.5 text-muted-foreground ${loading ? 'animate-spin' : ''}`} />

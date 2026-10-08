@@ -904,3 +904,140 @@
     visibility: visible !important;
   }
 }
+
+/* Reports A4 Print Layout */
+@page report-a4 {
+  size: A4 portrait;
+  margin: 15mm;
+}
+
+@media print {
+  body.printing-report * {
+    visibility: hidden;
+  }
+
+  body.printing-report #printable-report,
+  body.printing-report #printable-report * {
+    visibility: visible;
+  }
+
+  #printable-report {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 180mm;
+    padding: 0;
+    background: #fff !important;
+    color: #000 !important;
+    font-family: 'Cairo', 'Segoe UI', Arial, sans-serif;
+    font-size: 11pt;
+    line-height: 1.5;
+  }
+
+  /* Print-specific report header */
+  #printable-report .report-print-header {
+    text-align: center;
+    margin-bottom: 8mm;
+    padding-bottom: 4mm;
+    border-bottom: 2px solid #000;
+  }
+
+  #printable-report .report-print-header .logo {
+    max-width: 50mm;
+    margin: 0 auto 3mm;
+  }
+
+  #printable-report .report-title {
+    font-size: 18pt;
+    font-weight: bold;
+    margin-bottom: 2mm;
+    color: #000 !important;
+  }
+
+  #printable-report .report-period {
+    font-size: 12pt;
+    color: #333 !important;
+  }
+
+  #printable-report .report-generated {
+    font-size: 9pt;
+    color: #666 !important;
+    margin-top: 2mm;
+  }
+
+  #printable-report .report-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 4mm;
+    margin: 5mm 0;
+    page-break-inside: avoid;
+  }
+
+  #printable-report .report-kpi-item {
+    border: 1px solid #ccc;
+    padding: 3mm;
+    page-break-inside: avoid;
+    background: #fff !important;
+  }
+
+  #printable-report .report-kpi-label {
+    font-size: 10pt;
+    color: #555 !important;
+    margin-bottom: 1mm;
+  }
+
+  #printable-report .report-kpi-value {
+    font-size: 14pt;
+    font-weight: bold;
+    color: #000 !important;
+  }
+
+  #printable-report table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 3mm 0;
+    font-size: 10pt;
+    page-break-inside: auto;
+  }
+
+  #printable-report table th {
+    background: #f0f0f0 !important;
+    border: 1px solid #999;
+    padding: 2mm;
+    text-align: right;
+    font-weight: bold;
+    color: #000 !important;
+  }
+
+  #printable-report table td {
+    border: 1px solid #ccc;
+    padding: 2mm;
+    text-align: right;
+    color: #000 !important;
+  }
+
+  #printable-report table tr {
+    page-break-inside: avoid;
+  }
+
+  /* Hide interactive elements inside cloned report */
+  #printable-report button,
+  #printable-report input,
+  #printable-report select,
+  #printable-report .no-print {
+    display: none !important;
+  }
+
+  /* Footer with page number */
+  #printable-report .report-print-footer {
+    position: fixed;
+    bottom: 5mm;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 8pt;
+    color: #666 !important;
+    border-top: 1px solid #ccc;
+    padding-top: 2mm;
+  }
+}

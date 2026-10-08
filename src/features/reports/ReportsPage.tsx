@@ -11,8 +11,11 @@ import {
   ReportDateRange,
   ReportOverviewKPIs,
 } from './types'
-import { getDateRangeFromPreset, exportToCSV, printReport } from './reportUtils'
+import { getDateRangeFromPreset, exportToCSV } from './reportUtils'
 import { reportsService } from './reportsService'
+import { customerDebtService } from '@/services/customers/customerDebtService'
+import { printReportA4, downloadReportPDF, shareReportViaWhatsApp } from './reportPrintService'
+import { CheckCircle2, AlertCircle } from 'lucide-react'
 
 import { ReportSidebar } from './components/ReportSidebar'
 import { ReportHeader } from './components/ReportHeader'
@@ -34,6 +37,7 @@ export function ReportsPage() {
   const { t, i18n } = useTranslation()
   const isRtl = i18n.language === 'ar'
   const currencySymbol = useSettingsStore(s => s.currencySymbol) || 'EGP'
+  const storeName = useSettingsStore(s => s.storeName) || 'MAKERS POS'
 
   const [activeSection, setActiveSection] = useState<ReportSection>('overview')
   const [dateRange, setDateRange] = useState<ReportDateRange>(() =>
@@ -41,6 +45,12 @@ export function ReportsPage() {
   )
   const [overviewKpis, setOverviewKpis] = useState<ReportOverviewKPIs | null>(null)
   const [loading, setLoading] = useState(false)
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
+
+  const showToast = useCallback((text: string, type: 'success' | 'error' = 'success') => {
+    setToastMessage({ text, type })
+    setTimeout(() => setToastMessage(null), 3500)
+  }, [])
 
   const formatCurrency = useCallback((val: number) => {
     return `${val.toLocaleString(isRtl ? 'ar-EG' : 'en-US', {
@@ -66,12 +76,27 @@ export function ReportsPage() {
   }, [loadOverview])
 
   const handleExportCsv = async () => {
-    const filename = `MAKERS_POS_Report_${activeSection}_${dateRange.startDate.slice(0, 10)}`
+    const filename = `report_${activeSection}_${new Date().toISOString().slice(0, 10)}.csv`
     try {
-      if (activeSection === 'sales') {
-        const data = await reportsService.getSalesTransactions({ range: dateRange, page: 1, pageSize: 1000 })
-        const headers = ['رقم الفاتورة', 'التاريخ', 'العميل', 'الكاشير', 'المجموع', 'الخصم', 'الإجمالي', 'طريقة الدفع']
-        const rows = data.rows.map(r => [
+      let headers: string[] = []
+      let rows: (string | number)[][] = []
+
+      if (activeSection === 'overview') {
+        headers = ['بند التقرير', 'القيمة']
+        rows = [
+          ['صافي المبيعات', overviewKpis?.netSales ?? 0],
+          ['إجمالي الأرباح', overviewKpis?.grossProfit ?? 0],
+          ['إجمالي المرتجعات', overviewKpis?.totalReturns ?? 0],
+          ['إجمالي المصروفات', overviewKpis?.totalExpenses ?? 0],
+          ['إجمالي المشتريات', overviewKpis?.totalPurchases ?? 0],
+          ['قيمة المخزون', overviewKpis?.inventoryValue ?? 0],
+          ['العملاء النشطين', overviewKpis?.activeCustomers ?? 0],
+          ['الموردين النشطين', overviewKpis?.activeSuppliers ?? 0],
+        ]
+      } else if (activeSection === 'sales') {
+        const data = await reportsService.getSalesTransactions({ range: dateRange, page: 1, pageSize: 5000 })
+        headers = ['رقم الفاتورة', 'التاريخ والوقت', 'العميل', 'الكاشير', 'المجموع', 'الخصم', 'الإجمالي', 'طريقة الدفع']
+        rows = data.rows.map(r => [
           r.invoiceNumber,
           r.createdAt,
           r.customerName || 'عميل نقدي',
@@ -81,24 +106,10 @@ export function ReportsPage() {
           r.total,
           r.paymentMethods,
         ])
-        exportToCSV(filename, headers, rows)
-      } else if (activeSection === 'expenses') {
-        const data = await reportsService.getExpensesReport({ range: dateRange, page: 1, pageSize: 1000 })
-        const headers = ['رقم المصروف', 'التاريخ', 'البند', 'البيان', 'المبلغ', 'طريقة الدفع', 'المستخدم']
-        const rows = data.rows.map(r => [
-          r.expenseNumber,
-          r.date,
-          r.categoryNameAr,
-          r.description,
-          r.amount,
-          r.paymentMethod,
-          r.userName || '—',
-        ])
-        exportToCSV(filename, headers, rows)
       } else if (activeSection === 'profit') {
         const data = await reportsService.getProfitReport(dateRange)
-        const headers = ['المنتج', 'كود SKU', 'الكمية المباعة', 'الإيراد', 'التكلفة', 'الربح', 'هامش الربح %']
-        const rows = data.byProduct.map(r => [
+        headers = ['المنتج', 'كود SKU', 'الكمية المباعة', 'الإيراد', 'التكلفة', 'الربح', 'هامش الربح %']
+        rows = data.byProduct.map(r => [
           r.nameAr,
           r.sku,
           r.quantitySold,
@@ -107,57 +118,198 @@ export function ReportsPage() {
           r.profit,
           `${r.marginPct}%`,
         ])
-        exportToCSV(filename, headers, rows)
+      } else if (activeSection === 'returns') {
+        const data = await reportsService.getReturnsReport({ range: dateRange, page: 1, pageSize: 5000 })
+        headers = ['رقم المرتجع', 'التاريخ', 'رقم فاتورة البيع', 'العميل', 'المسؤول', 'المبلغ المسترد', 'الحالة']
+        rows = data.rows.map(r => [
+          r.returnNumber,
+          r.createdAt,
+          r.originalSaleNumber,
+          r.customerName || 'عميل نقدي',
+          r.userName || '—',
+          r.refundAmount,
+          r.status,
+        ])
+      } else if (activeSection === 'expenses') {
+        const data = await reportsService.getExpensesReport({ range: dateRange, page: 1, pageSize: 5000 })
+        headers = ['رقم المصروف', 'التاريخ', 'البند', 'البيان', 'المبلغ', 'طريقة الدفع', 'المستخدم']
+        rows = data.rows.map(r => [
+          r.expenseNumber,
+          r.date,
+          r.categoryNameAr,
+          r.description,
+          r.amount,
+          r.paymentMethod,
+          r.userName || '—',
+        ])
+      } else if (activeSection === 'purchases') {
+        const data = await reportsService.getPurchasesReport({ range: dateRange, page: 1, pageSize: 5000 })
+        headers = ['رقم الفاتورة', 'تاريخ الشراء', 'المورد', 'الإجمالي', 'المدفوع', 'المتبقي', 'الحالة']
+        rows = data.rows.map(r => [
+          r.purchaseNumber,
+          r.purchasedAt,
+          r.supplierName || '—',
+          r.total,
+          r.paidAmount,
+          r.balance,
+          r.status,
+        ])
+      } else if (activeSection === 'inventory') {
+        const data = await reportsService.getStockMovements({ range: dateRange, page: 1, pageSize: 5000 })
+        headers = ['الصنف', 'كود SKU', 'نوع الحركة', 'الكمية', 'الرصيد قبل', 'الرصيد بعد', 'التاريخ والوقت', 'السبب']
+        rows = data.rows.map(m => [
+          m.productNameAr,
+          m.sku,
+          m.type,
+          m.quantity,
+          m.stockBefore,
+          m.stockAfter,
+          m.date,
+          m.reason || '—',
+        ])
+      } else if (activeSection === 'customers') {
+        const data = await reportsService.getCustomersReport(dateRange)
+        headers = ['اسم العميل', 'رقم الهاتف', 'عدد المعاملات', 'إجمالي المشتريات', 'الرصيد المستحق']
+        rows = data.topCustomers.map(r => [
+          r.name,
+          r.phone || '—',
+          r.salesCount,
+          r.totalPurchases,
+          r.balance,
+        ])
+      } else if (activeSection === 'customer_debts') {
+        const data = await customerDebtService.getAgingReport()
+        headers = ['اسم العميل', 'رقم الهاتف', 'إجمالي المديونية', '0-30 يوم', '31-60 يوم', '61-90 يوم', 'أكثر من 90 يوم']
+        rows = data.debtors.map(r => [
+          r.name,
+          r.phone || '—',
+          r.balance,
+          r.aging_bucket === 'current' ? r.balance : 0,
+          r.aging_bucket === '30+' ? r.balance : 0,
+          r.aging_bucket === '60+' ? r.balance : 0,
+          r.aging_bucket === '90+' ? r.balance : 0,
+        ])
+      } else if (activeSection === 'suppliers') {
+        const data = await reportsService.getSuppliersReport(dateRange)
+        headers = ['اسم المورد', 'رقم الهاتف', 'عدد الفواتير', 'إجمالي التوريدات', 'المستحق للمورد']
+        rows = data.topSuppliers.map(r => [
+          r.name,
+          r.phone || '—',
+          r.purchasesCount,
+          r.totalPurchases,
+          r.balance,
+        ])
+      } else if (activeSection === 'cash_shifts') {
+        const data = await reportsService.getShiftsReport(dateRange)
+        headers = ['المعرف', 'نقطة البيع', 'الكاشير', 'وقت الفتح', 'وقت الإغلاق', 'بداية العهدة', 'المبيعات النقدية', 'الرصيد الفعلي', 'العجز/الزيادة', 'الحالة']
+        rows = data.shifts.map(r => [
+          r.id,
+          r.registerName,
+          r.userName,
+          r.openedAt,
+          r.closedAt || 'مفتوحة',
+          r.openingBalance,
+          r.cashSales,
+          r.actualCash ?? '—',
+          r.difference ?? 0,
+          r.status,
+        ])
+      } else if (activeSection === 'payments') {
+        const data = await reportsService.getPaymentMethodBreakdown(dateRange)
+        headers = ['طريقة الدفع', 'عدد العمليات', 'المبيعات', 'المستردات', 'الصافي', 'النسبة المئوية %']
+        rows = data.methods.map(r => [
+          r.labelAr,
+          r.salesCount,
+          r.salesAmount,
+          r.refundsAmount,
+          r.netAmount,
+          `${r.percentage}%`,
+        ])
+      } else if (activeSection === 'products_categories') {
+        const data = await reportsService.getProductPerformance({ range: dateRange })
+        headers = ['اسم المنتج', 'كود SKU', 'الكمية المباعة', 'الإيراد', 'الربح', 'هامش الربح %']
+        rows = data.map(r => [
+          r.nameAr,
+          r.sku,
+          r.quantitySold,
+          r.revenue,
+          r.profit,
+          `${r.marginPct}%`,
+        ])
       } else {
-        // Fallback generic export
-        const headers = ['التقرير', 'الفترة من', 'الفترة إلى', 'تاريخ الإنشاء']
-        const rows = [[activeSection, dateRange.startDate, dateRange.endDate, new Date().toISOString()]]
-        exportToCSV(filename, headers, rows)
+        headers = ['التقرير', 'الفترة من', 'الفترة إلى', 'تاريخ الإنشاء']
+        rows = [[activeSection, dateRange.startDate, dateRange.endDate, new Date().toISOString()]]
+      }
+
+      const ok = exportToCSV(filename, headers, rows)
+      if (ok) {
+        showToast(isRtl ? 'تم تصدير التقرير' : 'Report exported successfully', 'success')
+      } else {
+        showToast(isRtl ? 'فشل تصدير التقرير' : 'Failed to export report', 'error')
       }
     } catch (err) {
-      console.error('Export failed:', err)
+      console.error('Export CSV error:', err)
+      showToast(isRtl ? 'حدث خطأ أثناء تصدير ملف CSV' : 'Error exporting CSV', 'error')
     }
   }
 
-  const handlePrint = async () => {
-    const dateRangeText = `${dateRange.startDate.slice(0, 10)} → ${dateRange.endDate.slice(0, 10)}`
-    if (activeSection === 'sales') {
-      const data = await reportsService.getSalesTransactions({ range: dateRange, page: 1, pageSize: 200 })
-      const headers = ['الفاتورة', 'التاريخ', 'العميل', 'المجموع', 'الخصم', 'الإجمالي', 'طريقة الدفع']
-      const rows = data.rows.map(r => [
-        r.invoiceNumber,
-        r.createdAt.slice(0, 16).replace('T', ' '),
-        r.customerName || 'عميل نقدي',
-        formatCurrency(r.subtotal),
-        formatCurrency(r.discountAmount),
-        formatCurrency(r.total),
-        r.paymentMethods,
-      ])
-      printReport('تقرير المبيعات والعمليات', dateRangeText, headers, rows, isRtl)
-    } else if (activeSection === 'profit') {
-      const data = await reportsService.getProfitReport(dateRange)
-      const headers = ['المنتج', 'كود SKU', 'الكمية', 'الإيراد', 'التكلفة', 'الربح', 'الهامش']
-      const rows = data.byProduct.map(r => [
-        r.nameAr,
-        r.sku,
-        r.quantitySold,
-        formatCurrency(r.revenue),
-        formatCurrency(r.cost),
-        formatCurrency(r.profit),
-        `${r.marginPct}%`,
-      ])
-      printReport('تقرير الأرباح وهوامش الربحية', dateRangeText, headers, rows, isRtl)
-    } else {
-      const headers = ['البيان', 'القيمة']
-      const rows = [
-        ['صافي المبيعات', overviewKpis ? formatCurrency(overviewKpis.netSales) : '0'],
-        ['إجمالي الأرباح', overviewKpis ? formatCurrency(overviewKpis.grossProfit) : '0'],
-        ['إجمالي المرتجعات', overviewKpis ? formatCurrency(overviewKpis.totalReturns) : '0'],
-        ['إجمالي المصروفات', overviewKpis ? formatCurrency(overviewKpis.totalExpenses) : '0'],
-        ['إجمالي المشتريات', overviewKpis ? formatCurrency(overviewKpis.totalPurchases) : '0'],
-        ['قيمة المخزون', overviewKpis ? formatCurrency(overviewKpis.inventoryValue) : '0'],
-      ]
-      printReport('الملخص التنفيذي للأعمال', dateRangeText, headers, rows, isRtl)
+  const handlePrintA4 = async () => {
+    const reportEl = document.getElementById('active-report-view')
+    if (!reportEl) return
+    try {
+      await printReportA4(reportEl, {
+        reportType: activeSection,
+        reportTitle: currentMeta.title,
+        dateFrom: dateRange.startDate.slice(0, 10),
+        dateTo: dateRange.endDate.slice(0, 10),
+        storeName: storeName || 'MAKERS POS',
+        isArabic: isRtl,
+      })
+    } catch (err: any) {
+      console.error('Print A4 error:', err)
+      showToast(isRtl ? 'تعذر تشغيل أمر الطباعة' : 'Failed to print report', 'error')
+    }
+  }
+
+  const handleExportPdf = async () => {
+    const reportEl = document.getElementById('active-report-view')
+    if (!reportEl) return
+    showToast(isRtl ? 'جاري تجهيز وتحميل ملف PDF...' : 'Generating PDF...', 'success')
+    try {
+      await downloadReportPDF(reportEl, {
+        reportType: activeSection,
+        reportTitle: currentMeta.title,
+        dateFrom: dateRange.startDate.slice(0, 10),
+        dateTo: dateRange.endDate.slice(0, 10),
+        storeName: storeName || 'MAKERS POS',
+        isArabic: isRtl,
+      })
+      showToast(isRtl ? 'تم تحميل ملف PDF بنجاح' : 'PDF downloaded successfully', 'success')
+    } catch (err: any) {
+      console.error('PDF export error:', err)
+      showToast(isRtl ? 'تعذر تصدير ملف PDF' : 'Failed to export PDF', 'error')
+    }
+  }
+
+  const handleShareWhatsApp = async () => {
+    const reportEl = document.getElementById('active-report-view')
+    if (!reportEl) return
+    showToast(isRtl ? 'جاري تجهيز صورة التقرير وفتح واتساب...' : 'Preparing WhatsApp share...', 'success')
+    try {
+      const res = await shareReportViaWhatsApp(reportEl, {
+        reportType: activeSection,
+        reportTitle: currentMeta.title,
+        dateFrom: dateRange.startDate.slice(0, 10),
+        dateTo: dateRange.endDate.slice(0, 10),
+        storeName: storeName || 'MAKERS POS',
+        isArabic: isRtl,
+      })
+      if (res.success) {
+        showToast(res.message, 'success')
+      }
+    } catch (err: any) {
+      console.error('WhatsApp share error:', err)
+      showToast(isRtl ? 'تعذر مشاركة التقرير عبر واتساب' : 'Failed to share report on WhatsApp', 'error')
     }
   }
 
@@ -230,7 +382,19 @@ export function ReportsPage() {
       />
 
       {/* Main Report Content Area */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto relative">
+        {toastMessage && (
+          <div
+            className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2 transition-all duration-200 ${
+              toastMessage.type === 'success'
+                ? 'bg-emerald-600 text-white'
+                : 'bg-rose-600 text-white'
+            }`}
+          >
+            <span>{toastMessage.text}</span>
+          </div>
+        )}
+
         <ReportHeader
           title={currentMeta.title}
           subtitle={currentMeta.subtitle}
@@ -238,11 +402,13 @@ export function ReportsPage() {
           onDateRangeChange={setDateRange}
           onRefresh={loadOverview}
           onExportCsv={handleExportCsv}
-          onPrint={handlePrint}
+          onExportPdf={handleExportPdf}
+          onPrintA4={handlePrintA4}
+          onShareWhatsApp={handleShareWhatsApp}
           loading={loading}
         />
 
-        <div className="p-4 md:p-6 flex-1">
+        <div id="active-report-view" className="p-4 md:p-6 flex-1">
           {activeSection === 'overview' && (
             <OverviewReportView
               kpis={overviewKpis}

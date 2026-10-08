@@ -78,28 +78,35 @@ export function getDateRangeFromPreset(preset: ReportDatePreset, customStart?: s
 /**
  * Exports data to CSV file with UTF-8 BOM
  */
-export function exportToCSV(filename: string, headers: string[], rows: (string | number)[][]): void {
-  const escapeCsv = (val: string | number) => {
-    if (val === null || val === undefined) return '""'
-    const str = String(val).replace(/"/g, '""')
-    return `"${str}"`
+export function exportToCSV(filename: string, headers: string[], rows: (string | number)[][]): boolean {
+  try {
+    const escapeCsv = (val: string | number) => {
+      if (val === null || val === undefined) return '""'
+      const str = String(val).replace(/"/g, '""')
+      return `"${str}"`
+    }
+
+    const csvContent = [
+      headers.map(escapeCsv).join(','),
+      ...rows.map(row => row.map(escapeCsv).join(','))
+    ].join('\r\n')
+
+    // UTF-8 BOM for Arabic support
+    const BOM = '\uFEFF'
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename.endsWith('.csv') ? filename : `${filename}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    return true
+  } catch (err) {
+    console.error('[exportToCSV] Failed to generate/download CSV:', err)
+    return false
   }
-
-  const csvContent = [
-    headers.map(escapeCsv).join(','),
-    ...rows.map(row => row.map(escapeCsv).join(','))
-  ].join('\r\n')
-
-  // UTF-8 BOM
-  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.setAttribute('href', url)
-  link.setAttribute('download', `${filename}.csv`)
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
 }
 
 /**
