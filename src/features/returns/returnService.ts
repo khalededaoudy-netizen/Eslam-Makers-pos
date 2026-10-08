@@ -21,6 +21,7 @@ import {
   ReturnFilter,
 } from './types'
 import { PaymentMethodType } from '@/features/payments/types'
+import { getSettingNumber } from '@/services/settings/settingsHelper'
 
 export interface UserContext {
   id: string
@@ -322,6 +323,9 @@ class ReturnService {
       remainingRefundableAmount,
       items: returnableItems,
       isFullyReturned: allItemsFullyReturned || remainingRefundableAmount <= 0.001,
+      isOutsideReturnWindow: (await getSettingNumber('return_window_days')) > 0 &&
+        ((Date.now() - new Date(sale.created_at).getTime()) / (1000 * 60 * 60 * 24)) > ((await getSettingNumber('return_window_days')) || 14),
+      returnWindowDays: (await getSettingNumber('return_window_days')) || 14,
     }
   }
 
@@ -373,6 +377,9 @@ class ReturnService {
       const eligibility = await this.getSaleReturnEligibility(input.saleId)
       if (eligibility.isFullyReturned) {
         throw new Error('This sale has already been fully returned')
+      }
+      if (eligibility.isOutsideReturnWindow && user.role !== 'admin' && user.role !== 'manager') {
+        throw new Error(`انتهت فترة الإرجاع المسموحة لهذه الفاتورة (${eligibility.returnWindowDays} يوم)`)
       }
 
       const itemEligibilityMap = new Map<string, SaleReturnableItem>()

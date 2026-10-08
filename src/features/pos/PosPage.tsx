@@ -55,14 +55,15 @@ import { QuickCloseShiftModal } from './components/QuickCloseShiftModal'
 import { salesService } from '@/features/sales/salesService'
 import { ReceiptData, CreateSalePaymentInput } from '@/features/sales/types'
 import { formatCurrency } from '@/lib/formatters'
-import { openCashDrawerDirect } from '@/services/printer/directPrint'
+import { openCashDrawerDirect, printReceiptDirect } from '@/services/printer/directPrint'
+import { playScanSound, playSaleSuccessSound, playErrorSound } from '@/lib/soundService'
 
 export function PosPage() {
   const { t, i18n } = useTranslation()
   const isArabic = i18n.language !== 'en'
   const { user } = useAuthStore()
   const { can, isAdmin } = usePermission()
-  const { taxEnabled, taxRate, currencySymbol, autoOpenDrawer, defaultPrinter } = useSettingsStore()
+  const { taxEnabled, taxRate, currencySymbol, autoOpenDrawer, defaultPrinter, autoPrintAfterSale, printCopies } = useSettingsStore()
 
   const cart = useCartStore()
 
@@ -253,7 +254,10 @@ export function PosPage() {
 
       if (!result.success && result.error) {
         setStockNotice(result.error)
+        playErrorSound()
         setTimeout(() => setStockNotice(null), 4000)
+      } else {
+        playScanSound()
       }
     },
     [cart]
@@ -536,6 +540,8 @@ export function PosPage() {
           console.warn('[POS] Auto cash drawer open warning:', err)
         })
       }
+
+      playSaleSuccessSound()
 
       setActiveReceipt(res.receipt)
       setReceiptModalOpen(true)
@@ -1045,6 +1051,7 @@ export function PosPage() {
         <ReceiptModal
           isOpen={receiptModalOpen}
           receipt={activeReceipt}
+          autoPrint={autoPrintAfterSale}
           onClose={() => {
             setReceiptModalOpen(false)
             setActiveReceipt(null)

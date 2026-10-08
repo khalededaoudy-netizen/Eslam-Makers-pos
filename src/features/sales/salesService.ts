@@ -17,6 +17,7 @@ import {
   SalesFilter,
 } from './types'
 import { PaymentMethodType } from '@/features/payments/types'
+import { getSetting, getSettingBool, getSettingNumber } from '@/services/settings/settingsHelper'
 
 export interface UserContext {
   id: string
@@ -29,32 +30,52 @@ const inFlightTransactions = new Set<string>()
 
 class SalesService {
   /**
-   * Generate human-readable sequential Sale Number: SAL-YYYYMMDD-XXXXXX
+   * Generate human-readable sequential Sale Number: configurable prefix and numbering
    */
   private async generateSaleNumber(): Promise<string> {
     const db = getDb()
-    const now = new Date()
-    const yyyy = now.getFullYear()
-    const mm = String(now.getMonth() + 1).padStart(2, '0')
-    const dd = String(now.getDate()).padStart(2, '0')
-    const datePrefix = `SAL-${yyyy}${mm}${dd}-`
+    const prefix = (await getSetting('invoice_prefix')) || 'SAL-'
+    const numbering = (await getSetting('invoice_numbering')) || 'date'
 
-    const rows = await db.select<Array<{ invoice_number: string }>>(
-      'SELECT invoice_number FROM sales WHERE invoice_number LIKE ? ORDER BY invoice_number DESC LIMIT 1',
-      [`${datePrefix}%`]
-    )
-
-    let nextSeq = 1
-    if (rows && rows.length > 0) {
-      const lastNum = rows[0].invoice_number
-      const lastSeqStr = lastNum.replace(datePrefix, '')
-      const lastSeq = parseInt(lastSeqStr, 10)
-      if (!isNaN(lastSeq)) {
-        nextSeq = lastSeq + 1
+    if (numbering === 'sequential') {
+      const rows = await db.select<Array<{ invoice_number: string }>>(
+        'SELECT invoice_number FROM sales WHERE invoice_number LIKE ? ORDER BY invoice_number DESC LIMIT 1',
+        [`${prefix}%`]
+      )
+      let nextSeq = 1
+      if (rows && rows.length > 0) {
+        const lastNum = rows[0].invoice_number
+        const lastSeqStr = lastNum.replace(prefix, '')
+        const lastSeq = parseInt(lastSeqStr, 10)
+        if (!isNaN(lastSeq)) {
+          nextSeq = lastSeq + 1
+        }
       }
-    }
+      return `${prefix}${String(nextSeq).padStart(6, '0')}`
+    } else {
+      const now = new Date()
+      const yyyy = now.getFullYear()
+      const mm = String(now.getMonth() + 1).padStart(2, '0')
+      const dd = String(now.getDate()).padStart(2, '0')
+      const datePrefix = `${prefix}${yyyy}${mm}${dd}-`
 
-    return `${datePrefix}${String(nextSeq).padStart(6, '0')}`
+      const rows = await db.select<Array<{ invoice_number: string }>>(
+        'SELECT invoice_number FROM sales WHERE invoice_number LIKE ? ORDER BY invoice_number DESC LIMIT 1',
+        [`${datePrefix}%`]
+      )
+
+      let nextSeq = 1
+      if (rows && rows.length > 0) {
+        const lastNum = rows[0].invoice_number
+        const lastSeqStr = lastNum.replace(datePrefix, '')
+        const lastSeq = parseInt(lastSeqStr, 10)
+        if (!isNaN(lastSeq)) {
+          nextSeq = lastSeq + 1
+        }
+      }
+
+      return `${datePrefix}${String(nextSeq).padStart(6, '0')}`
+    }
   }
 
   /**
@@ -228,10 +249,30 @@ class SalesService {
       const taxableAmount = Math.max(0, computedSubtotal - cartDiscountAmount)
 
       const taxRate = input.taxRate !== undefined ? input.taxRate : (isTaxEnabled ? systemTaxRate : 0)
-      const taxAmount = isTaxEnabled && taxRate > 0 ? Number(((taxableAmount * taxRate) / 100).toFixed(2)) : 0
-      const totalAmount = Number((taxableAmount + taxAmount).toFixed(2))
+      const isTaxInclusive = await getSettingBool('tax_inclusive', false)
+      let taxAmount = 0
+      let totalAmount = 0
+      if (isTaxEnabled && taxRate > 0) {
+        if (isTaxInclusive) {
+          taxAmount = Number((taxableAmount - (taxableAmount / (1 + taxRate / 100))).toFixed(2))
+          totalAmount = Number(taxableAmount.toFixed(2))
+        } else {
+          taxAmount = Number(((taxableAmount * taxRate) / 100).toFixed(2))
+          totalAmount = Number((taxableAmount + taxAmount).toFixed(2))
+        }
+      } else {
+        totalAmount = Number(taxableAmount.toFixed(2))
+      }
 
       // 7. Validate Payments
+      const requireCustomerForCredit = await getSettingBool('require_customer_for_credit', true)
+      if (requireCustomerForCredit && !input.customerId) {
+        const hasCredit = (input.payments || []).some(p => (p.method as string) === 'credit')
+        if (hasCredit) {
+          throw new Error('Customer account is required for credit sales (آجل)')
+        }
+      }
+
       if ((!input.payments || input.payments.length === 0) && !input.customerId) {
         throw new Error('Payment information is required')
       }

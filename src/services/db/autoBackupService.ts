@@ -37,7 +37,10 @@ class AutoBackupService {
         ? (Date.now() - new Date(lastBackupAt).getTime()) / (1000 * 60 * 60)
         : Infinity;
 
-      if (hoursSince < BACKUP_INTERVAL_HOURS) return;
+      const intervalSetting = await settingsService.get('backup_interval_hours', '24');
+      const intervalHours = Number(intervalSetting) || BACKUP_INTERVAL_HOURS;
+
+      if (hoursSince < intervalHours) return;
 
       await this.createBackup();
     } catch (err) {
@@ -102,14 +105,17 @@ class AutoBackupService {
   }
 
   private async cleanupOldBackups() {
+    const retentionSetting = await settingsService.get('backup_retention_count', '30');
+    const retentionCount = Number(retentionSetting) || MAX_LOCAL_BACKUPS;
+
     const backups = await backupService.listBackups({ type: 'auto' });
-    if (backups.length <= MAX_LOCAL_BACKUPS) return;
+    if (backups.length <= retentionCount) return;
 
     const sorted = backups.sort(
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
 
-    const toDelete = sorted.slice(0, sorted.length - MAX_LOCAL_BACKUPS);
+    const toDelete = sorted.slice(0, sorted.length - retentionCount);
     for (const backup of toDelete) {
       await backupService.deleteBackup(backup.id);
       logger.info('[AutoBackup] Deleted old backup', { file: backup.filename });

@@ -9,6 +9,7 @@ import { getDb } from '../db/database'
 import { withTransaction } from '../db/transaction'
 import { auditService } from '../audit/auditService'
 import { backupService } from '../db/backupService'
+import { getSettingNumber } from '../settings/settingsHelper'
 
 /**
  * Checks if a user profile matches typical test/demo account patterns
@@ -314,7 +315,8 @@ class AuthService {
       // Create session
       const token = uuidv4() + '-' + uuidv4()
       const sessionId = uuidv4()
-      const expiresAt = new Date(Date.now() + SESSION_HOURS * 60 * 60 * 1000).toISOString()
+      const sessionMinutes = (await getSettingNumber('session_timeout_minutes')) || (SESSION_HOURS * 60)
+      const expiresAt = new Date(Date.now() + sessionMinutes * 60 * 1000).toISOString()
 
       await db.execute(
         'INSERT INTO sessions (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)',

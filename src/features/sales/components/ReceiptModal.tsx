@@ -28,6 +28,7 @@ interface ReceiptModalProps {
   onClose: () => void
   onNewSale?: () => void
   autoWhatsApp?: boolean
+  autoPrint?: boolean
 }
 
 export function ReceiptModal({
@@ -36,6 +37,7 @@ export function ReceiptModal({
   onClose,
   onNewSale,
   autoWhatsApp = false,
+  autoPrint = false,
 }: ReceiptModalProps) {
   const { t, i18n } = useTranslation()
   const isArabic = i18n.language !== 'en'
@@ -50,11 +52,13 @@ export function ReceiptModal({
   const [printFeedback, setPrintFeedback] = useState<{ type: 'success' | 'error'; message: string; showPreview?: boolean } | null>(null)
 
   const autoWhatsAppTriggered = useRef(false)
+  const autoPrintTriggered = useRef(false)
 
-  // Reset auto-trigger ref when modal closes or receipt changes
+  // Reset auto-trigger refs when modal closes or receipt changes
   React.useEffect(() => {
     if (!isOpen) {
       autoWhatsAppTriggered.current = false
+      autoPrintTriggered.current = false
     }
   }, [isOpen])
 
@@ -155,6 +159,17 @@ export function ReceiptModal({
       return () => clearTimeout(timer)
     }
   }, [isOpen, autoWhatsApp, receipt])
+
+  // Trigger Direct Print automatically if requested via autoPrint prop
+  React.useEffect(() => {
+    if (isOpen && autoPrint && receipt && !autoPrintTriggered.current) {
+      autoPrintTriggered.current = true
+      const timer = setTimeout(() => {
+        handlePrint()
+      }, 300)
+      return () => clearTimeout(timer)
+    }
+  }, [isOpen, autoPrint, receipt])
 
   const handleDone = () => {
     onClose()

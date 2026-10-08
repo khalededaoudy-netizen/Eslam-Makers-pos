@@ -45,7 +45,17 @@ const PRESET_DIMENSIONS: LabelDimensionPreset[] = [
 export function BarcodesPage() {
   const { t, i18n } = useTranslation()
   const isAr = i18n.language !== 'en'
-  const { storeName, currencySymbol } = useSettingsStore()
+  const {
+    storeName,
+    currencySymbol,
+    defaultBarcodeType,
+    labelWidthMm,
+    labelHeightMm,
+    labelShowStore,
+    labelShowSku,
+    labelShowName,
+    labelShowPrice,
+  } = useSettingsStore()
 
   // Product Selection State
   const [products, setProducts] = useState<ProductListItem[]>([])
@@ -55,20 +65,22 @@ export function BarcodesPage() {
 
   // Label Configuration
   const [selectedPreset, setSelectedPreset] = useState<string>('50x25')
-  const [customWidth, setCustomWidth] = useState<number>(50)
-  const [customHeight, setCustomHeight] = useState<number>(25)
+  const [customWidth, setCustomWidth] = useState<number>(labelWidthMm || 50)
+  const [customHeight, setCustomHeight] = useState<number>(labelHeightMm || 25)
   const [quantity, setQuantity] = useState<number>(1)
 
   // Custom Content Toggles
-  const [showStoreName, setShowStoreName] = useState(true)
-  const [showProductName, setShowProductName] = useState(true)
+  const [showStoreName, setShowStoreName] = useState(labelShowStore ?? true)
+  const [showProductName, setShowProductName] = useState(labelShowName ?? true)
   const [showBarcodeText, setShowBarcodeText] = useState(true)
-  const [showPrice, setShowPrice] = useState(true)
-  const [showSku, setShowSku] = useState(true)
+  const [showPrice, setShowPrice] = useState(labelShowPrice ?? true)
+  const [showSku, setShowSku] = useState(labelShowSku ?? true)
 
   // Barcode Overrides / Generated values
   const [activeBarcode, setActiveBarcode] = useState<string>('')
-  const [barcodeType, setBarcodeType] = useState<'ean13' | 'code128'>('code128')
+  const [barcodeType, setBarcodeType] = useState<'ean13' | 'code128'>(
+    (defaultBarcodeType as any) === 'ean13' ? 'ean13' : 'code128'
+  )
   const [barcodeError, setBarcodeError] = useState<string | null>(null)
 
   // Canvas Refs for Preview

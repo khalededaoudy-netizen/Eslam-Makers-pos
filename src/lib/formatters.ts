@@ -2,11 +2,25 @@
  * Shared formatting utilities for MAKERS POS
  */
 
+import { useSettingsStore } from '@/stores/settingsStore'
+
 /** Format a number as currency */
-export function formatCurrency(amount: number | string | null | undefined, symbol = 'ج.م', decimals = 2): string {
+export function formatCurrency(amount: number | string | null | undefined, customSymbol?: string, decimals = 2): string {
   const num = typeof amount === 'number' ? amount : parseFloat(String(amount ?? 0))
   const safeNum = isNaN(num) ? 0 : num
-  return `${safeNum.toFixed(decimals)} ${symbol}`
+
+  let symbol = customSymbol
+  let position = 'after'
+  try {
+    const store = useSettingsStore.getState()
+    if (!symbol) symbol = store.currencySymbol || 'ج.م'
+    if (store.currencyPosition) position = store.currencyPosition
+  } catch {
+    if (!symbol) symbol = 'ج.م'
+  }
+
+  const formattedNum = safeNum.toFixed(decimals)
+  return position === 'before' ? `${symbol} ${formattedNum}` : `${formattedNum} ${symbol}`
 }
 
 /** Format ISO date string using Western/English digits (DD/MM/YYYY) */

@@ -140,6 +140,8 @@ export interface SaleReturnEligibility {
   remainingRefundableAmount: number
   items: SaleReturnableItem[]
   isFullyReturned: boolean
+  isOutsideReturnWindow?: boolean
+  returnWindowDays?: number
 }
 
 export interface ReturnReceiptItem {

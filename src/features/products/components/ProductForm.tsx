@@ -43,6 +43,7 @@ import {
   ProductBarcodeItem,
 } from '@/services/products/productService'
 import { useAuthStore } from '@/stores/authStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 
 export interface Supplier {
   id: string
@@ -192,14 +193,15 @@ export function ProductForm({ initialData, onClose, onSaved }: ProductFormProps)
     }
   }
 
+  const { skuPrefix } = useSettingsStore()
+
   const handleGenerateSKU = () => {
+    const prefix = skuPrefix || 'MKR-'
     let newSku = ''
     if (formData.name_en) {
-      newSku = generateSKU(formData.name_en)
-    } else if (formData.name_ar) {
-      newSku = 'PRD-' + Date.now().toString().slice(-6)
+      newSku = `${prefix}${generateSKU(formData.name_en)}`
     } else {
-      newSku = 'PRD-' + Date.now().toString().slice(-6)
+      newSku = `${prefix}${Date.now().toString().slice(-6)}`
     }
     setFormData((prev) => ({ ...prev, sku: newSku }))
 

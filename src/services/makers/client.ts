@@ -5,6 +5,7 @@
  */
 
 import { MakersApiProduct } from './types'
+import { getSetting, getSettingNumber } from '@/services/settings/settingsHelper'
 
 const MAKERS_BASE_URL = 'https://makerselectronics.com/wp-json/wc/store/v1'
 const DEFAULT_TIMEOUT_MS = 15000
@@ -131,13 +132,26 @@ export async function fetchMakersProducts(
   perPage = 20,
   timeoutMs = DEFAULT_TIMEOUT_MS
 ): Promise<FetchProductsResponse> {
+  const customBase = await getSetting('makers_api_url')
+  let baseUrl = MAKERS_BASE_URL
+  if (customBase && customBase.trim()) {
+    let clean = customBase.trim().replace(/\/+$/, '')
+    if (!clean.includes('/wp-json/wc/store/v1')) {
+      clean = `${clean}/wp-json/wc/store/v1`
+    }
+    baseUrl = clean
+  }
+
+  const configuredLimit = await getSettingNumber('makers_search_limit')
+  const effectivePerPage = configuredLimit > 0 ? configuredLimit : perPage
+
   const cleanSearch = searchTerm.trim()
-  const url = new URL(`${MAKERS_BASE_URL}/products`)
+  const url = new URL(`${baseUrl}/products`)
   if (cleanSearch) {
     url.searchParams.set('search', cleanSearch)
   }
   url.searchParams.set('page', page.toString())
-  url.searchParams.set('per_page', perPage.toString())
+  url.searchParams.set('per_page', effectivePerPage.toString())
 
   const data = await fetchMakersRaw(url.toString(), timeoutMs)
 
