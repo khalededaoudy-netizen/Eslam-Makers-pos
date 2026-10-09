@@ -25,7 +25,16 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPDATA/**",
+          "$APPDATA/com.makers.pos/product_images/**",
+          "$RESOURCE/**",
+          "$HOME/**"
+        ]
+      }
     }
   },
   "bundle": {

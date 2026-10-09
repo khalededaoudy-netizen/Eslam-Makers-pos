@@ -186,8 +186,12 @@ class ProductService {
     }
 
     if (params?.categoryId) {
-      conditions.push('p.category_id = ?')
-      sqlParams.push(params.categoryId)
+      if (params.categoryId === 'uncategorized') {
+        conditions.push('(p.category_id IS NULL OR p.category_id = "")')
+      } else {
+        conditions.push('p.category_id = ?')
+        sqlParams.push(params.categoryId)
+      }
     }
 
     if (params?.brandId) {
@@ -775,6 +779,22 @@ class ProductService {
   async getCategories(): Promise<CategoryItem[]> {
     const db = getDb()
     return db.select<CategoryItem[]>('SELECT * FROM product_categories ORDER BY sort_order ASC, name_ar ASC')
+  }
+
+  async getCategoryCounts(): Promise<Record<string, number>> {
+    const db = getDb()
+    const rows = await db.select<Array<{ category_id: string | null; count: number }>>(
+      'SELECT category_id, COUNT(*) as count FROM products WHERE is_active = 1 GROUP BY category_id'
+    )
+    const map: Record<string, number> = {}
+    for (const r of rows) {
+      if (r.category_id) {
+        map[r.category_id] = r.count
+      } else {
+        map['uncategorized'] = r.count
+      }
+    }
+    return map
   }
 
   async createCategory(

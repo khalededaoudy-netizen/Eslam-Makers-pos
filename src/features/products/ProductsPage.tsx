@@ -27,11 +27,14 @@ import {
   CheckCircle2,
   X,
   Sparkles,
+  Eye,
+  FolderTree,
 } from 'lucide-react'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useAuthStore, usePermission } from '@/stores/authStore'
 import { formatCurrency } from '@/lib/formatters'
 import { ProductForm } from './components/ProductForm'
+import { ProductDetailsModal } from './components/ProductDetailsModal'
 import { ExcelImportModal } from './components/ExcelImportModal'
 import { SmartImportModal } from './components/SmartImportModal'
 import { MakersImportModal } from './components/MakersImportModal'
@@ -75,6 +78,15 @@ export function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<any>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
+  // Product Details Modal State
+  const [viewProductTarget, setViewProductTarget] = useState<ProductListItem | null>(null)
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false)
+
+  // Category Sidebar State & Counts
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({})
+  const [isCategorySidebarOpen, setIsCategorySidebarOpen] = useState(true)
+  const [categorySearch, setCategorySearch] = useState('')
+
   // Bulk Edit Modals
   const [bulkCategoryModalOpen, setBulkCategoryModalOpen] = useState(false)
   const [targetBulkCategory, setTargetBulkCategory] = useState('')
@@ -104,18 +116,34 @@ export function ProductsPage() {
 
   async function loadFilterLookups() {
     try {
-      const [cats, brs, uns] = await Promise.all([
+      const [cats, brs, uns, counts] = await Promise.all([
         productService.getCategories(),
         productService.getBrands(),
         productService.getUnits(),
+        productService.getCategoryCounts(),
       ])
       setCategories(cats)
       setBrands(brs)
       setUnits(uns)
+      setCategoryCounts(counts)
     } catch (err) {
       console.error('Failed to load filter lookups:', err)
     }
   }
+
+  const totalCountAllCategories = React.useMemo(() => {
+    return Object.values(categoryCounts).reduce((acc, c) => acc + c, 0)
+  }, [categoryCounts])
+
+  const filteredCategoriesList = React.useMemo(() => {
+    if (!categorySearch.trim()) return categories
+    const q = categorySearch.toLowerCase().trim()
+    return categories.filter(
+      (c) =>
+        (c.name_ar && c.name_ar.toLowerCase().includes(q)) ||
+        (c.name_en && c.name_en.toLowerCase().includes(q))
+    )
+  }, [categories, categorySearch])
 
   async function loadProducts(q = search, catId = selectedCategory, brId = selectedBrand, lowStock = lowStockFilter) {
     setLoading(true)
@@ -507,7 +535,22 @@ export function ProductsPage() {
             }`}
           >
             <AlertTriangle className="w-3.5 h-3.5" />
-            <span>{t('products.lowStockOnly', 'المخزون المنخفض فقط')}</span>
+            <span>{t('products.lowStock', 'المخزون المنخفض فقط')}</span>
+          </button>
+
+          {/* Category Sidebar Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setIsCategorySidebarOpen((prev) => !prev)}
+            className={`flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-medium border transition-colors ${
+              isCategorySidebarOpen
+                ? 'bg-primary/10 border-primary/30 text-primary font-bold'
+                : 'bg-input border-border text-muted-foreground hover:text-foreground'
+            }`}
+            title={isAr ? 'عرض أو إخفاء شريط التصنيفات الجانبي' : 'Toggle Category Sidebar'}
+          >
+            <FolderTree className="w-3.5 h-3.5 text-primary" />
+            <span>{isAr ? 'شريط التصنيفات' : 'Categories'}</span>
           </button>
         </div>
 
@@ -580,138 +623,303 @@ export function ProductsPage() {
         </div>
       )}
 
-      {/* Products Table */}
-      <div className="flex-1 overflow-auto">
-        {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-          </div>
-        ) : products.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground space-y-3">
-            <Package className="w-12 h-12 opacity-30" />
-            <p className="text-sm font-semibold">{t('common.noData', 'لا توجد منتجات مطابقة')}</p>
-            {canCreate && (
+      {/* Main Content Area: Category Filter Sidebar + Products Table */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Category Filter Sidebar (Right side in RTL) */}
+        {isCategorySidebarOpen ? (
+          <aside className="w-64 xl:w-72 border-e border-border bg-card/60 flex flex-col shrink-0 animate-fade-in select-none">
+            {/* Sidebar Header */}
+            <div className="p-3 border-b border-border flex items-center justify-between bg-muted/20">
+              <div className="flex items-center gap-2">
+                <FolderTree className="w-4 h-4 text-primary" />
+                <span className="text-xs font-bold text-foreground">
+                  {isAr ? 'تصنيفات المتجر' : 'Categories'}
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">
+                  {categories.length}
+                </span>
+              </div>
               <button
-                onClick={() => setIsFormOpen(true)}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-bold hover:bg-primary/90 transition-colors"
+                type="button"
+                onClick={() => setIsCategorySidebarOpen(false)}
+                className="p-1 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted transition-colors"
+                title={isAr ? 'إخفاء الشريط الجانبي' : 'Hide Sidebar'}
               >
-                {t('products.addProduct', 'إضافة أول منتج')}
+                <X className="w-3.5 h-3.5" />
               </button>
-            )}
-          </div>
-        ) : (
-          <table className="w-full text-xs text-start border-collapse">
-            <thead className="bg-muted/50 text-muted-foreground border-b border-border sticky top-0 z-10 select-none">
-              <tr>
-                <th className="p-3 text-center w-10">
+            </div>
+
+            {/* Category Search Input */}
+            {categories.length > 4 && (
+              <div className="p-2 border-b border-border/60 bg-muted/10">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute start-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   <input
-                    type="checkbox"
-                    checked={selectedIds.size === products.length && products.length > 0}
-                    onChange={handleToggleSelectAll}
-                    className="rounded border-border text-primary focus:ring-primary cursor-pointer"
+                    type="text"
+                    value={categorySearch}
+                    onChange={(e) => setCategorySearch(e.target.value)}
+                    placeholder={isAr ? 'بحث في التصنيفات...' : 'Search categories...'}
+                    className="w-full h-8 ps-8 pe-2 text-xs rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                   />
-                </th>
-                <th className="p-3 text-center w-12">{isAr ? 'الصورة' : 'Image'}</th>
-                <th className="p-3 text-start">{isAr ? 'الصنف / الاسم' : 'Product Name'}</th>
-                <th className="p-3 text-start">SKU</th>
-                <th className="p-3 text-start">{isAr ? 'الباركود' : 'Barcode'}</th>
-                <th className="p-3 text-start">{isAr ? 'التصنيف' : 'Category'}</th>
-                <th className="p-3 text-start">{isAr ? 'مكان الدرج' : 'Location'}</th>
-                <th className="p-3 text-end">{isAr ? 'سعر البيع' : 'Selling Price'}</th>
-                <th className="p-3 text-center">{isAr ? 'المخزون' : 'Stock'}</th>
-                <th className="p-3 text-center w-24">{isAr ? 'الإجراءات' : 'Actions'}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/60">
-              {products.map((p) => {
-                const isSelected = selectedIds.has(p.id)
-                const isLowStock = p.current_stock <= p.min_stock
+                  {categorySearch && (
+                    <button
+                      type="button"
+                      onClick={() => setCategorySearch('')}
+                      className="absolute end-2 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Categories Scrollable List */}
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              {/* All Categories Item */}
+              <button
+                type="button"
+                onClick={() => handleCategoryFilter('')}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                  selectedCategory === ''
+                    ? 'bg-primary text-primary-foreground font-bold shadow-sm'
+                    : 'text-foreground hover:bg-muted'
+                }`}
+              >
+                <span className="flex items-center gap-2 truncate">
+                  <Layers className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{isAr ? 'كل التصنيفات' : 'All Categories'}</span>
+                </span>
+                <span
+                  className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                    selectedCategory === ''
+                      ? 'bg-primary-foreground/20 text-primary-foreground'
+                      : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  {totalCountAllCategories}
+                </span>
+              </button>
+
+              {/* Category Items */}
+              {filteredCategoriesList.map((cat) => {
+                const isSelected = selectedCategory === cat.id
+                const count = categoryCounts[cat.id] || 0
                 return (
-                  <tr
-                    key={p.id}
-                    className={`transition-colors hover:bg-muted/30 ${
-                      isSelected ? 'bg-primary/5' : ''
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => handleCategoryFilter(isSelected ? '' : cat.id)}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all ${
+                      isSelected
+                        ? 'bg-primary/10 text-primary border border-primary/25 font-bold shadow-xs'
+                        : 'text-foreground hover:bg-muted font-medium'
                     }`}
                   >
-                    <td className="p-3 text-center">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => handleToggleSelectRow(p.id)}
-                        className="rounded border-border text-primary focus:ring-primary cursor-pointer"
-                      />
-                    </td>
-                    <td className="p-2 text-center w-12">
-                      <div className="w-10 h-10 rounded-lg bg-muted/60 border border-border flex items-center justify-center overflow-hidden p-0.5 mx-auto">
-                        <ProductImage
-                          src={p.image_path}
-                          alt={p.name_en || p.name_ar}
-                          fallbackType="cpu"
-                          iconClassName="w-5 h-5 text-muted-foreground/30"
-                        />
-                      </div>
-                    </td>
-                    <td className="p-3 font-semibold text-foreground">
-                      <p className="font-bold">{isAr ? p.name_ar : p.name_en || p.name_ar}</p>
-                      {p.name_en && isAr && <p className="text-[10px] text-muted-foreground font-sans">{p.name_en}</p>}
-                    </td>
-                    <td className="p-3 font-mono text-muted-foreground font-semibold">{p.sku}</td>
-                    <td className="p-3 font-mono text-muted-foreground text-[11px]">
-                      {p.primary_barcode || <span className="opacity-40">—</span>}
-                    </td>
-                    <td className="p-3 text-muted-foreground">
-                      {p.category_name || '—'}
-                    </td>
-                    <td className="p-3 text-muted-foreground font-mono text-[11px]">
-                      {p.drawer_location || <span className="opacity-40">—</span>}
-                    </td>
-                    <td className="p-3 text-end font-mono font-bold text-foreground">
-                      {formatCurrency(p.selling_price, currencySymbol)}
-                    </td>
-                    <td className="p-3 text-center">
+                    <span className="flex items-center gap-2 truncate">
                       <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-mono font-bold ${
-                          isLowStock
-                            ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
-                            : 'bg-emerald-500/10 text-emerald-600'
+                        className={`w-2 h-2 rounded-full shrink-0 ${
+                          isSelected ? 'bg-primary' : 'bg-muted-foreground/40'
                         }`}
-                      >
-                        {p.current_stock}
-                      </span>
-                    </td>
-                    <td className="p-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        {canUpdate && (
+                      />
+                      <span className="truncate">{isAr ? cat.name_ar : cat.name_en || cat.name_ar}</span>
+                    </span>
+                    <span
+                      className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                        isSelected
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                )
+              })}
+
+              {/* Uncategorized products if any */}
+              {(categoryCounts['uncategorized'] || 0) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => handleCategoryFilter(selectedCategory === 'uncategorized' ? '' : 'uncategorized')}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all ${
+                    selectedCategory === 'uncategorized'
+                      ? 'bg-primary/10 text-primary border border-primary/25 font-bold'
+                      : 'text-muted-foreground hover:bg-muted font-medium'
+                  }`}
+                >
+                  <span className="flex items-center gap-2 truncate">
+                    <span className="w-2 h-2 rounded-full bg-amber-500/60 shrink-0" />
+                    <span className="truncate">{isAr ? 'بدون تصنيف' : 'Uncategorized'}</span>
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-bold">
+                    {categoryCounts['uncategorized']}
+                  </span>
+                </button>
+              )}
+            </div>
+          </aside>
+        ) : (
+          /* Collapsed Mini Tab */
+          <div className="border-e border-border bg-card/40 flex flex-col items-center py-3 px-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsCategorySidebarOpen(true)}
+              className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-muted transition-colors flex flex-col items-center gap-1.5"
+              title={isAr ? 'عرض تصنيفات المنتجات' : 'Show Categories'}
+            >
+              <FolderTree className="w-4 h-4 text-primary" />
+              <span className="text-[10px] font-bold [writing-mode:vertical-lr] my-1 text-muted-foreground hover:text-primary">
+                {isAr ? 'التصنيفات' : 'Categories'}
+              </span>
+            </button>
+          </div>
+        )}
+
+        {/* Products Table Area */}
+        <div className="flex-1 overflow-auto">
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+            </div>
+          ) : products.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 text-muted-foreground space-y-3">
+              <Package className="w-12 h-12 opacity-30" />
+              <p className="text-sm font-semibold">{t('common.noData', 'لا توجد منتجات مطابقة')}</p>
+              {canCreate && (
+                <button
+                  onClick={() => setIsFormOpen(true)}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-bold hover:bg-primary/90 transition-colors"
+                >
+                  {t('products.addProduct', 'إضافة أول منتج')}
+                </button>
+              )}
+            </div>
+          ) : (
+            <table className="w-full text-xs text-start border-collapse">
+              <thead className="bg-muted/50 text-muted-foreground border-b border-border sticky top-0 z-10 select-none">
+                <tr>
+                  <th className="p-3 text-center w-10">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.size === products.length && products.length > 0}
+                      onChange={handleToggleSelectAll}
+                      className="rounded border-border text-primary focus:ring-primary cursor-pointer"
+                    />
+                  </th>
+                  <th className="p-3 text-center w-12">{isAr ? 'الصورة' : 'Image'}</th>
+                  <th className="p-3 text-start">{isAr ? 'الصنف / الاسم' : 'Product Name'}</th>
+                  <th className="p-3 text-start">SKU</th>
+                  <th className="p-3 text-start">{isAr ? 'الباركود' : 'Barcode'}</th>
+                  <th className="p-3 text-start">{isAr ? 'التصنيف' : 'Category'}</th>
+                  <th className="p-3 text-start">{isAr ? 'مكان الدرج' : 'Location'}</th>
+                  <th className="p-3 text-end">{isAr ? 'سعر البيع' : 'Selling Price'}</th>
+                  <th className="p-3 text-center">{isAr ? 'المخزون' : 'Stock'}</th>
+                  <th className="p-3 text-center w-24">{isAr ? 'الإجراءات' : 'Actions'}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {products.map((p) => {
+                  const isSelected = selectedIds.has(p.id)
+                  const isLowStock = p.current_stock <= p.min_stock
+                  return (
+                    <tr
+                      key={p.id}
+                      className={`transition-colors hover:bg-muted/30 ${
+                        isSelected ? 'bg-primary/5' : ''
+                      }`}
+                    >
+                      <td className="p-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelectRow(p.id)}
+                          className="rounded border-border text-primary focus:ring-primary cursor-pointer"
+                        />
+                      </td>
+                      <td className="p-2 text-center w-12">
+                        <div className="w-10 h-10 rounded-lg bg-muted/60 border border-border flex items-center justify-center overflow-hidden p-0.5 mx-auto">
+                          <ProductImage
+                            src={p.image_path}
+                            alt={p.name_en || p.name_ar}
+                            fallbackType="cpu"
+                            iconClassName="w-5 h-5 text-muted-foreground/30"
+                          />
+                        </div>
+                      </td>
+                      <td className="p-3 font-semibold text-foreground">
+                        <p className="font-bold">{isAr ? p.name_ar : p.name_en || p.name_ar}</p>
+                        {p.name_en && isAr && <p className="text-[10px] text-muted-foreground font-sans">{p.name_en}</p>}
+                      </td>
+                      <td className="p-3 font-mono text-muted-foreground font-semibold">{p.sku}</td>
+                      <td className="p-3 font-mono text-muted-foreground text-[11px]">
+                        {p.primary_barcode || <span className="opacity-40">—</span>}
+                      </td>
+                      <td className="p-3 text-muted-foreground">
+                        {p.category_name || '—'}
+                      </td>
+                      <td className="p-3 text-muted-foreground font-mono text-[11px]">
+                        {p.drawer_location || <span className="opacity-40">—</span>}
+                      </td>
+                      <td className="p-3 text-end font-mono font-bold text-foreground">
+                        {formatCurrency(p.selling_price, currencySymbol)}
+                      </td>
+                      <td className="p-3 text-center">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-mono font-bold ${
+                            isLowStock
+                              ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                              : 'bg-emerald-500/10 text-emerald-600'
+                          }`}
+                        >
+                          {p.current_stock}
+                        </span>
+                      </td>
+                      <td className="p-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
                           <button
                             type="button"
                             onClick={() => {
-                              setEditingProduct(p)
-                              setIsFormOpen(true)
+                              setViewProductTarget(p)
+                              setIsDetailsOpen(true)
                             }}
-                            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                            title={t('common.edit', 'تعديل')}
+                            className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                            title={isAr ? 'عرض التفاصيل' : 'View Details'}
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
+                            <Eye className="w-3.5 h-3.5" />
                           </button>
-                        )}
-                        {canDelete && (
-                          <button
-                            type="button"
-                            onClick={() => setDeleteProductTarget(p)}
-                            className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                            title={t('common.delete', 'حذف')}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
+                          {canUpdate && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingProduct(p)
+                                setIsFormOpen(true)
+                              }}
+                              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                              title={t('common.edit', 'تعديل')}
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              type="button"
+                              onClick={() => setDeleteProductTarget(p)}
+                              className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                              title={t('common.delete', 'حذف')}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
 
       {/* Product Create / Edit Modal Form */}
@@ -936,6 +1144,22 @@ export function ProductsPage() {
           </div>
         </div>
       )}
+
+      {/* Product Details Modal */}
+      <ProductDetailsModal
+        isOpen={isDetailsOpen}
+        product={viewProductTarget}
+        onClose={() => {
+          setIsDetailsOpen(false)
+          setViewProductTarget(null)
+        }}
+        onEdit={(p) => {
+          setIsDetailsOpen(false)
+          setViewProductTarget(null)
+          setEditingProduct(p)
+          setIsFormOpen(true)
+        }}
+      />
 
       {/* Single Product Delete Confirmation Dialog */}
       <ConfirmDialog

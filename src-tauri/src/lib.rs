@@ -1049,6 +1049,26 @@ async fn clear_webview_data() -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn read_image_base64(file_path: String) -> Result<String, String> {
+    let path = std::path::PathBuf::from(file_path.trim());
+    if !path.exists() {
+        return Err("File not found".to_string());
+    }
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let mime = match ext.as_str() {
+        "png" => "image/png",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "svg" => "image/svg+xml",
+        _ => "image/jpeg",
+    };
+    Ok(format!("data:{};base64,{}", mime, b64))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -1069,7 +1089,8 @@ pub fn run() {
         copy_backup_to_secondary,
         delete_backup_file,
         append_app_log,
-        clear_webview_data
+        clear_webview_data,
+        read_image_base64
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
