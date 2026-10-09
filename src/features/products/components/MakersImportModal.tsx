@@ -21,6 +21,9 @@ import {
   Check,
   AlertTriangle,
   Info,
+  SlidersHorizontal,
+  ChevronDown,
+  RotateCcw,
 } from 'lucide-react'
 import { getDb } from '@/services/db/database'
 import {
@@ -53,6 +56,12 @@ interface ImportReport {
   duplicate: number
   failed: number
   items: Array<{ name: string; status: 'success' | 'duplicate' | 'error'; message?: string }>
+}
+
+interface PerProductOverride {
+  sellingPrice?: string
+  quantity?: string
+  purchasePrice?: string
 }
 
 export function MakersImportModal({
@@ -111,7 +120,10 @@ export function MakersImportModal({
     }
   }
 
-  // Bulk edit overrides
+  // Per-product overrides (keyed by product ID)
+  const [perProductOverrides, setPerProductOverrides] = useState<Record<number, PerProductOverride>>({})
+  // Bulk edit collapsible state
+  const [isBulkOpen, setIsBulkOpen] = useState(false)
   const [bulkSellingPrice, setBulkSellingPrice] = useState<string>('')
   const [bulkPurchasePrice, setBulkPurchasePrice] = useState<string>('')
   const [bulkStock, setBulkStock] = useState<string>('')
@@ -244,11 +256,81 @@ export function MakersImportModal({
     performSearch(query, 1)
   }
 
+  // Helper to compute effective values for a product
+  const getProductValues = useCallback(
+    (product: MakersMappedProduct) => {
+      const override = perProductOverrides[product.id] || {}
+      const sellingPriceVal =
+        override.sellingPrice !== undefined && override.sellingPrice.trim() !== ''
+          ? parseFloat(override.sellingPrice)
+          : (product.websitePrice || 0)
+      const quantityVal =
+        override.quantity !== undefined && override.quantity.trim() !== ''
+          ? parseInt(override.quantity, 10)
+          : 0
+      const autoPurchasePrice =
+        Math.round((isNaN(sellingPriceVal) ? (product.websitePrice || 0) : sellingPriceVal) * 0.7 * 100) / 100
+      const purchasePriceVal =
+        override.purchasePrice !== undefined && override.purchasePrice.trim() !== ''
+          ? parseFloat(override.purchasePrice)
+          : autoPurchasePrice
+
+      return {
+        sellingPrice: isNaN(sellingPriceVal) ? (product.websitePrice || 0) : sellingPriceVal,
+        quantity: isNaN(quantityVal) ? 0 : Math.max(0, quantityVal),
+        purchasePrice: isNaN(purchasePriceVal) ? autoPurchasePrice : purchasePriceVal,
+        rawOverride: override,
+      }
+    },
+    [perProductOverrides]
+  )
+
+  // Update override for single product
+  const updateOverride = (productId: number, field: keyof PerProductOverride, value: string) => {
+    setPerProductOverrides((prev) => ({
+      ...prev,
+      [productId]: {
+        ...prev[productId],
+        [field]: value,
+      },
+    }))
+  }
+
+  // Apply bulk inputs to all selected products
+  const handleApplyBulk = () => {
+    if (!bulkSellingPrice.trim() && !bulkStock.trim() && !bulkPurchasePrice.trim()) return
+
+    setPerProductOverrides((prev) => {
+      const next = { ...prev }
+      selectedProductIds.forEach((id) => {
+        next[id] = {
+          ...next[id],
+          ...(bulkSellingPrice.trim() ? { sellingPrice: bulkSellingPrice.trim() } : {}),
+          ...(bulkStock.trim() ? { quantity: bulkStock.trim() } : {}),
+          ...(bulkPurchasePrice.trim() ? { purchasePrice: bulkPurchasePrice.trim() } : {}),
+        }
+      })
+      return next
+    })
+  }
+
+  // Reset bulk and overrides
+  const handleResetBulkAndOverrides = () => {
+    setBulkSellingPrice('')
+    setBulkPurchasePrice('')
+    setBulkStock('')
+    setPerProductOverrides({})
+  }
+
   // Selection toggle
   const toggleSelectProduct = (id: number) => {
     const next = new Set(selectedProductIds)
     if (next.has(id)) {
       next.delete(id)
+      setPerProductOverrides((prev) => {
+        const { [id]: _, ...rest } = prev
+        return rest
+      })
     } else {
       next.add(id)
     }
@@ -258,6 +340,7 @@ export function MakersImportModal({
   const handleSelectAll = () => {
     if (selectedProductIds.size === results.length) {
       setSelectedProductIds(new Set())
+      setPerProductOverrides({})
     } else {
       setSelectedProductIds(new Set(results.map((p) => p.id)))
     }
@@ -266,9 +349,16 @@ export function MakersImportModal({
   const handleSelectOnlyNew = () => {
     const newIds = results.filter((p) => statusMap[p.id]?.status === 'new').map((p) => p.id)
     setSelectedProductIds(new Set(newIds))
+    setPerProductOverrides((prev) => {
+      const next: Record<number, PerProductOverride> = {}
+      newIds.forEach((id) => {
+        if (prev[id]) next[id] = prev[id]
+      })
+      return next
+    })
   }
 
-  // Bulk Import Execution
+  // Import Execution with Per-Product Overrides
   const handleExecuteImport = async () => {
     const productsToImport = results.filter((p) => selectedProductIds.has(p.id))
     if (productsToImport.length === 0) return
@@ -298,16 +388,14 @@ export function MakersImportModal({
       })
 
       try {
-        const sellingOverride = bulkSellingPrice.trim() ? parseFloat(bulkSellingPrice) : undefined
-        const purchaseOverride = bulkPurchasePrice.trim() ? parseFloat(bulkPurchasePrice) : undefined
-        const stockOverride = bulkStock.trim() ? parseFloat(bulkStock) : undefined
+        const values = getProductValues(prod)
 
         const res = await importMakersProductDirect(db, prod, {
           userId: user?.id,
           purchasePriceRatio: 0.7,
-          sellingPriceOverride: sellingOverride,
-          purchasePriceOverride: purchaseOverride,
-          stockOverride: stockOverride,
+          sellingPriceOverride: values.sellingPrice > 0 ? values.sellingPrice : undefined,
+          purchasePriceOverride: values.purchasePrice > 0 ? values.purchasePrice : undefined,
+          stockOverride: values.quantity >= 0 ? values.quantity : 0,
         })
 
         if (res.status === 'success') {
@@ -329,9 +417,11 @@ export function MakersImportModal({
     setIsImporting(false)
     setImportReport(report)
     setSelectedProductIds(new Set())
+    setPerProductOverrides({})
     setBulkSellingPrice('')
     setBulkPurchasePrice('')
     setBulkStock('')
+    setIsBulkOpen(false)
     // Refresh status map
     await checkStatusForResults(results)
     onImportComplete()
@@ -469,117 +559,171 @@ export function MakersImportModal({
 
           {/* Action Row when results are present */}
           {results.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-border/60 flex flex-wrap items-center justify-between gap-2 text-xs">
-              <div className="flex items-center gap-2">
+            <div className="mt-3 pt-3 border-t border-border/60 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSelectAll}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-muted/50 hover:bg-muted text-foreground font-semibold transition-colors"
+                  >
+                    {selectedProductIds.size === results.length ? (
+                      <CheckSquare className="w-4 h-4 text-primary" />
+                    ) : (
+                      <Square className="w-4 h-4 text-muted-foreground" />
+                    )}
+                    <span>
+                      {selectedProductIds.size === results.length
+                        ? t('makersImport.deselectAll')
+                        : t('makersImport.selectAll')}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSelectOnlyNew}
+                    className="px-3 py-1.5 rounded-lg border border-border bg-muted/50 hover:bg-muted text-foreground font-semibold transition-colors"
+                  >
+                    <span>{isArabic ? 'تحديد الجديد فقط' : 'Select New Only'}</span>
+                  </button>
+
+                  {/* Collapsible Bulk Fill Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setIsBulkOpen((prev) => !prev)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                      isBulkOpen
+                        ? 'border-primary/50 bg-primary/10 text-primary'
+                        : 'border-border bg-muted/30 hover:bg-muted text-foreground'
+                    }`}
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-primary" />
+                    <span>{isArabic ? 'ملء جماعي (اختياري)' : 'Bulk Fill (Optional)'}</span>
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                        isBulkOpen ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+
+                  <span className="text-muted-foreground font-medium ms-2">
+                    {results.length} {t('makersImport.productsFound')}
+                    {selectedProductIds.size > 0 && (
+                      <span className="text-primary font-bold ms-1">
+                        ({selectedProductIds.size} {isArabic ? 'محدد' : 'selected'})
+                      </span>
+                    )}
+                  </span>
+                </div>
+
+                {/* Import Button */}
                 <button
                   type="button"
-                  onClick={handleSelectAll}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-muted/50 hover:bg-muted text-foreground font-semibold transition-colors"
+                  disabled={selectedProductIds.size === 0 || isImporting}
+                  onClick={handleExecuteImport}
+                  className="flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow-md disabled:opacity-50"
                 >
-                  {selectedProductIds.size === results.length ? (
-                    <CheckSquare className="w-4 h-4 text-primary" />
-                  ) : (
-                    <Square className="w-4 h-4 text-muted-foreground" />
-                  )}
+                  <Download className="w-4 h-4" />
                   <span>
-                    {selectedProductIds.size === results.length
-                      ? t('makersImport.deselectAll')
-                      : t('makersImport.selectAll')}
+                    {t('makersImport.importSelected')} ({selectedProductIds.size})
                   </span>
                 </button>
+              </div>
 
-                <button
-                  type="button"
-                  onClick={handleSelectOnlyNew}
-                  className="px-3 py-1.5 rounded-lg border border-border bg-muted/50 hover:bg-muted text-foreground font-semibold transition-colors"
-                >
-                  <span>{isArabic ? 'تحديد الجديد فقط' : 'Select New Only'}</span>
-                </button>
-
-                <span className="text-muted-foreground font-medium ms-2">
-                  {results.length} {t('makersImport.productsFound')}
-                  {selectedProductIds.size > 0 && (
-                    <span className="text-primary font-bold ms-1">
-                      ({selectedProductIds.size} {isArabic ? 'محدد' : 'selected'})
+              {/* Collapsible Bulk Edit Panel — hidden by default, toggled via button */}
+              {isBulkOpen && (
+                <div className="p-3 rounded-xl border border-primary/20 bg-primary/5 space-y-2.5 animate-fade-in">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-primary shrink-0" />
+                      <span className="font-bold text-foreground">
+                        {isArabic
+                          ? `ملء جماعي لجميع المنتجات المحددة (${selectedProductIds.size} محدد)`
+                          : `Bulk Fill for Selected Products (${selectedProductIds.size} selected)`}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">
+                      {isArabic
+                        ? 'سيتم تطبيق القيم على الحقول أدناه، ويمكنك تعديل كل منتج على حدة'
+                        : 'Applies values to fields below; you can still customize each product'}
                     </span>
-                  )}
-                </span>
-              </div>
+                  </div>
 
-              {/* Import Button */}
-              <button
-                type="button"
-                disabled={selectedProductIds.size === 0 || isImporting}
-                onClick={handleExecuteImport}
-                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow-md disabled:opacity-50"
-              >
-                <Download className="w-4 h-4" />
-                <span>
-                  {t('makersImport.importSelected')} ({selectedProductIds.size})
-                </span>
-              </button>
-            </div>
-          )}
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-semibold text-muted-foreground">
+                        {t('makersImport.sellingPrice')}
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        value={bulkSellingPrice}
+                        onChange={(e) => setBulkSellingPrice(e.target.value)}
+                        placeholder={isArabic ? 'سعر الموقع افتراضياً' : 'Website price'}
+                        className="w-full h-8 px-2.5 text-xs font-mono rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-muted-foreground/50"
+                      />
+                    </div>
 
-          {/* Bulk Edit Bar — shown when products are selected */}
-          {selectedProductIds.size > 0 && (
-            <div className="mt-3 pt-3 border-t border-border/60 space-y-2.5 animate-fade-in">
-              <div className="flex items-center gap-2 text-xs">
-                <Banknote className="w-4 h-4 text-primary shrink-0" />
-                <span className="font-bold text-foreground">
-                  {isArabic ? `تعديل أسعار وكمية (${selectedProductIds.size} محدد)` : `Edit Prices & Stock (${selectedProductIds.size} selected)`}
-                </span>
-                <span className="text-[10px] text-muted-foreground ms-auto">
-                  {isArabic ? 'اتركه فارغاً للقيمة الافتراضية' : 'Leave empty for defaults'}
-                </span>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-semibold text-muted-foreground">
-                    {t('makersImport.sellingPrice')}
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    min="0"
-                    value={bulkSellingPrice}
-                    onChange={(e) => setBulkSellingPrice(e.target.value)}
-                    placeholder={isArabic ? 'سعر الموقع' : 'Website price'}
-                    className="w-full px-2.5 py-1.5 text-xs font-mono rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-muted-foreground/50"
-                  />
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-semibold text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Package className="w-3 h-3" />
+                          {t('makersImport.quantity')}
+                        </span>
+                      </label>
+                      <input
+                        type="number"
+                        step="1"
+                        min="0"
+                        value={bulkStock}
+                        onChange={(e) => setBulkStock(e.target.value)}
+                        placeholder="0"
+                        className="w-full h-8 px-2.5 text-xs font-mono rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-muted-foreground/50"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-semibold text-muted-foreground">
+                        {isArabic ? 'سعر الشراء (اختياري)' : 'Purchase Price (Optional)'}
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        value={bulkPurchasePrice}
+                        onChange={(e) => setBulkPurchasePrice(e.target.value)}
+                        placeholder={isArabic ? '0.7 × سعر البيع' : '0.7 × selling price'}
+                        className="w-full h-8 px-2.5 text-xs font-mono rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-muted-foreground/50"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={handleApplyBulk}
+                        disabled={
+                          selectedProductIds.size === 0 ||
+                          (!bulkSellingPrice.trim() && !bulkStock.trim() && !bulkPurchasePrice.trim())
+                        }
+                        className="flex-1 h-8 px-3 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-1 shadow-sm"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>{isArabic ? 'طبق على المحدد' : 'Apply to Selected'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleResetBulkAndOverrides}
+                        className="h-8 px-2.5 rounded-lg border border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground text-xs transition-colors"
+                        title={isArabic ? 'تفريغ وإلغاء التعديلات' : 'Reset overrides'}
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-semibold text-muted-foreground">
-                    {isArabic ? 'سعر الشراء' : 'Purchase Price'}
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    min="0"
-                    value={bulkPurchasePrice}
-                    onChange={(e) => setBulkPurchasePrice(e.target.value)}
-                    placeholder={isArabic ? 'سعر بيع × 0.7' : 'Sell × 0.7'}
-                    className="w-full px-2.5 py-1.5 text-xs font-mono rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-muted-foreground/50"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-semibold text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Package className="w-3 h-3" />
-                      {t('makersImport.quantity')}
-                    </span>
-                  </label>
-                  <input
-                    type="number"
-                    step="1"
-                    min="0"
-                    value={bulkStock}
-                    onChange={(e) => setBulkStock(e.target.value)}
-                    placeholder="0"
-                    className="w-full px-2.5 py-1.5 text-xs font-mono rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-muted-foreground/50"
-                  />
-                </div>
-              </div>
+              )}
             </div>
           )}
         </div>
@@ -641,82 +785,150 @@ export function MakersImportModal({
                   const isSelected = selectedProductIds.has(prod.id)
                   const isPreview = previewProduct?.id === prod.id
                   const status = statusMap[prod.id]?.status || 'new'
+                  const effectiveValues = getProductValues(prod)
 
                   return (
                     <div
                       key={prod.id}
                       onClick={() => setPreviewProduct(prod)}
-                      className={`group relative p-3 rounded-xl border transition-all cursor-pointer flex gap-3 items-center ${
+                      className={`group relative p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-2.5 ${
                         isPreview
                           ? 'border-primary bg-primary/5 shadow-md ring-1 ring-primary'
+                          : isSelected
+                          ? 'border-primary/60 bg-primary/[0.03] shadow-sm'
                           : 'border-border bg-card hover:border-primary/40 hover:bg-muted/30 shadow-sm'
                       }`}
                     >
-                      {/* Checkbox */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleSelectProduct(prod.id)
-                        }}
-                        className="p-1 text-muted-foreground hover:text-primary transition-colors shrink-0"
-                      >
-                        {isSelected ? (
-                          <CheckSquare className="w-5 h-5 text-primary" />
-                        ) : (
-                          <Square className="w-5 h-5" />
-                        )}
-                      </button>
-
-                      {/* Thumbnail Image */}
-                      <div className="w-14 h-14 rounded-lg bg-muted/80 border border-border flex items-center justify-center shrink-0 overflow-hidden p-0.5">
-                        <ProductImage
-                          src={prod.imageUrl}
-                          alt={prod.name}
-                          className="w-full h-full object-contain rounded"
-                          fallbackType="cpu"
-                        />
-                      </div>
-
-                      {/* Info & Badges */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          {/* Status Badge */}
-                          {status === 'duplicate' ? (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                              {t('makersImport.statusExists')}
-                            </span>
+                      {/* Product Main Header / Info */}
+                      <div className="flex gap-3 items-start">
+                        {/* Checkbox */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            toggleSelectProduct(prod.id)
+                          }}
+                          className="p-1 text-muted-foreground hover:text-primary transition-colors shrink-0 mt-0.5"
+                        >
+                          {isSelected ? (
+                            <CheckSquare className="w-5 h-5 text-primary" />
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                              {t('makersImport.statusNew')}
-                            </span>
+                            <Square className="w-5 h-5" />
                           )}
+                        </button>
 
-                          {prod.sku && (
-                            <span className="text-[10px] font-mono text-muted-foreground truncate">
-                              {prod.sku}
-                            </span>
-                          )}
+                        {/* Thumbnail Image */}
+                        <div className="w-14 h-14 rounded-lg bg-muted/80 border border-border flex items-center justify-center shrink-0 overflow-hidden p-0.5">
+                          <ProductImage
+                            src={prod.imageUrl}
+                            alt={prod.name}
+                            className="w-full h-full object-contain rounded"
+                            fallbackType="cpu"
+                          />
                         </div>
 
-                        <h4 className="text-xs font-bold text-foreground line-clamp-2 leading-tight group-hover:text-primary transition-colors">
-                          {prod.name}
-                        </h4>
+                        {/* Info & Badges */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            {/* Status Badge */}
+                            {status === 'duplicate' ? (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                {t('makersImport.statusExists')}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                {t('makersImport.statusNew')}
+                              </span>
+                            )}
 
-                        <div className="flex items-center justify-between mt-1">
-                          <span className="text-xs font-mono font-bold text-foreground">
-                            {formatCurrency(prod.websitePrice, currencySymbol)}
-                          </span>
+                            {prod.sku && (
+                              <span className="text-[10px] font-mono text-muted-foreground truncate">
+                                {prod.sku}
+                              </span>
+                            )}
+                          </div>
 
-                          {prod.footprintPackage && (
-                            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-muted text-muted-foreground">
-                              {prod.footprintPackage}
-                            </span>
+                          <h4 className="text-xs font-bold text-foreground line-clamp-2 leading-tight group-hover:text-primary transition-colors">
+                            {prod.name}
+                          </h4>
+
+                          {!isSelected && (
+                            <div className="flex items-center justify-between mt-1">
+                              <span className="text-xs font-mono font-bold text-foreground">
+                                {formatCurrency(prod.websitePrice, currencySymbol)}
+                              </span>
+
+                              {prod.footprintPackage && (
+                                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-muted text-muted-foreground">
+                                  {prod.footprintPackage}
+                                </span>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>
+
+                      {/* Inline Edit Inputs Per Row — Visible When Product is Selected */}
+                      {isSelected && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="pt-2 border-t border-border/60 space-y-1.5 animate-fade-in"
+                        >
+                          <div className="grid grid-cols-2 gap-2">
+                            {/* Selling Price */}
+                            <div className="space-y-0.5">
+                              <label className="text-[10px] font-semibold text-muted-foreground flex items-center justify-between">
+                                <span>{t('makersImport.sellingPrice')}</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  min="0"
+                                  value={perProductOverrides[prod.id]?.sellingPrice ?? ''}
+                                  placeholder={String(prod.websitePrice || 0)}
+                                  onChange={(e) => updateOverride(prod.id, 'sellingPrice', e.target.value)}
+                                  className="w-full h-8 px-2 text-xs font-mono font-bold rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-muted-foreground/50"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Quantity */}
+                            <div className="space-y-0.5">
+                              <label className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
+                                <Package className="w-2.5 h-2.5" />
+                                <span>{t('makersImport.quantity')}</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  step="1"
+                                  min="0"
+                                  value={perProductOverrides[prod.id]?.quantity ?? ''}
+                                  placeholder="0"
+                                  onChange={(e) => updateOverride(prod.id, 'quantity', e.target.value)}
+                                  className="w-full h-8 px-2 text-xs font-mono font-bold rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-muted-foreground/50"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Calculated Reference Info */}
+                          <div className="flex items-center justify-between text-[10px] text-muted-foreground font-mono pt-0.5 px-0.5">
+                            <span>
+                              {isArabic ? 'سعر الشراء (auto):' : 'Cost (auto):'}{' '}
+                              <strong className="text-foreground">
+                                {formatCurrency(effectiveValues.purchasePrice, currencySymbol)}
+                              </strong>
+                            </span>
+                            <span className="text-[9px] text-muted-foreground/80">
+                              {isArabic ? 'سعر الموقع:' : 'Web:'} {formatCurrency(prod.websitePrice, currencySymbol)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -777,6 +989,66 @@ export function MakersImportModal({
                     </span>
                   </div>
                 </div>
+
+                {/* Per-Product Price & Stock Override Box in Preview Panel (When Selected) */}
+                {selectedProductIds.has(previewProduct.id) && (
+                  <div className="p-3.5 rounded-xl border border-primary/20 bg-card space-y-2.5 shadow-sm">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-foreground flex items-center gap-1.5">
+                        <Banknote className="w-3.5 h-3.5 text-primary" />
+                        {isArabic ? 'تعديل السعر والكمية للاستيراد' : 'Price & Stock for Import'}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        {isArabic ? 'سعر الموقع:' : 'Web:'} {formatCurrency(previewProduct.websitePrice, currencySymbol)}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-muted-foreground">
+                          {t('makersImport.sellingPrice')}
+                        </label>
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          value={perProductOverrides[previewProduct.id]?.sellingPrice ?? ''}
+                          onChange={(e) => updateOverride(previewProduct.id, 'sellingPrice', e.target.value)}
+                          placeholder={String(previewProduct.websitePrice || 0)}
+                          className="w-full h-8 px-2.5 text-xs font-mono font-bold rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-muted-foreground/50"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
+                          <Package className="w-3 h-3" />
+                          <span>{t('makersImport.quantity')}</span>
+                        </label>
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          value={perProductOverrides[previewProduct.id]?.quantity ?? ''}
+                          onChange={(e) => updateOverride(previewProduct.id, 'quantity', e.target.value)}
+                          placeholder="0"
+                          className="w-full h-8 px-2.5 text-xs font-mono font-bold rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-muted-foreground/50"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground font-mono pt-1 border-t border-border/50">
+                      <span>
+                        {isArabic ? 'سعر الشراء (auto):' : 'Cost (auto):'}{' '}
+                        <strong className="text-foreground">
+                          {formatCurrency(getProductValues(previewProduct).purchasePrice, currencySymbol)}
+                        </strong>
+                      </span>
+                      <span className="text-[10px] text-muted-foreground/80">
+                        (0.7 × سعر البيع)
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Categories & Specs */}
                 <div className="space-y-2 text-xs">
