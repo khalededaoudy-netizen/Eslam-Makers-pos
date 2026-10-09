@@ -652,7 +652,7 @@ export function BarcodesPage() {
       {/* ========================================================================= */}
       {/* DEDICATED PRINTABLE BARCODE LABELS CONTAINER (Visible ONLY during print) */}
       {/* ========================================================================= */}
-      <div id="printable-barcode-labels" className="print-only">
+      <div id="printable-barcode-labels" className="print-only hidden print:flex" aria-hidden="true">
         {selectedProduct &&
           Array.from({ length: quantity }).map((_, idx) => (
             <div

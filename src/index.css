@@ -581,6 +581,11 @@
   visibility: visible;
 }
 
+/* Print utility: hidden on screen, visible only during print */
+.print-only {
+  display: none !important;
+}
+
 @page {
   size: 80mm 297mm;
   margin: 0;
