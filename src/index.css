@@ -1042,3 +1042,24 @@
     padding-top: 2mm;
   }
 }
+
+/* ============================================
+   NUMBER INPUT — Prevent scroll from changing value
+   ============================================ */
+
+/* Hide spinner arrows (cleaner look) */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Prevent focus from triggering scroll changes */
+input[type="number"]:focus {
+  outline: none;
+}

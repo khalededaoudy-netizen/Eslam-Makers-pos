@@ -23,6 +23,7 @@ import { ProductListItem } from '@/services/products/productService'
 import { ProductImage } from '@/components/common/ProductImage'
 import { formatCurrency } from '@/lib/formatters'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { openUrl } from '@/lib/openUrl'
 
 interface ProductDetailsModalProps {
   product: ProductListItem | null
@@ -165,26 +166,24 @@ export function ProductDetailsModal({
               {/* Links if available */}
               <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
                 {product.external_url && (
-                  <a
-                    href={product.external_url}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => openUrl(product.external_url!)}
                     className="inline-flex items-center gap-1 text-primary hover:underline font-semibold"
                   >
                     <span>{isAr ? 'عرض في موقع ميكرز' : 'View on Store'}</span>
                     <ExternalLink className="w-3 h-3" />
-                  </a>
+                  </button>
                 )}
                 {product.datasheet_url && (
-                  <a
-                    href={product.datasheet_url}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => openUrl(product.datasheet_url!)}
                     className="inline-flex items-center gap-1 text-emerald-600 hover:underline font-semibold"
                   >
                     <span>{isAr ? 'فتح الداتاشيت (PDF)' : 'Datasheet PDF'}</span>
                     <ExternalLink className="w-3 h-3" />
-                  </a>
+                  </button>
                 )}
               </div>
             </div>
