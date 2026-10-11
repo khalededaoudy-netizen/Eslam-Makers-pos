@@ -9,12 +9,14 @@ import {
   Tag,
   Plus,
   Edit2,
+  Trash2,
   CheckCircle2,
   XCircle,
   Loader2,
   AlertCircle,
   Search,
 } from 'lucide-react'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { useAuthStore } from '@/stores/authStore'
 import { expenseService } from '../expenseService'
 import { ExpenseCategory, CreateExpenseCategoryInput, UpdateExpenseCategoryInput } from '../types'
@@ -47,6 +49,10 @@ export function ExpenseCategoryModal({
   const [nameEn, setNameEn] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  // Delete state
+  const [deleteCategoryTarget, setDeleteCategoryTarget] = useState<ExpenseCategory | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
   const loadCategories = async () => {
     setLoading(true)
     try {
@@ -65,6 +71,7 @@ export function ExpenseCategoryModal({
       setSuccessMessage(null)
       setIsFormOpen(false)
       setEditingCategory(null)
+      setDeleteCategoryTarget(null)
       loadCategories()
     }
   }, [isOpen])
@@ -146,6 +153,32 @@ export function ExpenseCategoryModal({
       onCategoriesChanged()
     } catch (err: any) {
       setErrorMessage(err?.message || 'Failed to toggle category state')
+    }
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!deleteCategoryTarget || !user) return
+    setIsDeleting(true)
+    setErrorMessage(null)
+    try {
+      await expenseService.deleteCategory(deleteCategoryTarget.id, {
+        id: user.id,
+        fullName: user.fullName || user.username,
+        username: user.username,
+      })
+      setSuccessMessage(
+        isRtl
+          ? `تم حذف الفئة "${deleteCategoryTarget.nameAr}" بنجاح`
+          : `Category "${deleteCategoryTarget.nameEn || deleteCategoryTarget.nameAr}" deleted successfully`
+      )
+      setDeleteCategoryTarget(null)
+      await loadCategories()
+      onCategoriesChanged()
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to delete category')
+      throw err
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -326,8 +359,17 @@ export function ExpenseCategoryModal({
                       type="button"
                       onClick={() => handleOpenEdit(cat)}
                       className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      title={t('common.edit', 'تعديل')}
                     >
                       <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteCategoryTarget(cat)}
+                      className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-rose-600 hover:border-rose-300 dark:hover:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                      title={t('common.delete', 'حذف')}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
@@ -347,6 +389,21 @@ export function ExpenseCategoryModal({
           </button>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!deleteCategoryTarget}
+        onClose={() => setDeleteCategoryTarget(null)}
+        onConfirm={handleConfirmDelete}
+        isLoading={isDeleting}
+        title={isRtl ? 'تأكيد حذف فئة المصروف' : 'Confirm Expense Category Deletion'}
+        itemName={
+          deleteCategoryTarget
+            ? (isRtl ? deleteCategoryTarget.nameAr : deleteCategoryTarget.nameEn || deleteCategoryTarget.nameAr)
+            : ''
+        }
+        confirmText={t('common.delete', 'حذف')}
+      />
     </div>
   )
 }

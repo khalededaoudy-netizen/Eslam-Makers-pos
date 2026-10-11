@@ -203,6 +203,67 @@ class ExpenseService {
     return this.updateExpenseCategory(id, { isActive }, user)
   }
 
+  async deleteCategory(
+    categoryId: string,
+    user: string | UserContext
+  ): Promise<void> {
+    const db = getDb()
+    const userId = typeof user === 'string' ? user : user.id
+    const userFullName = typeof user === 'string' ? 'User' : (user.fullName || user.username || 'User')
+
+    // 1. Check if category is used by any expenses
+    const rows = await db.select<Array<{ c: number }>>(
+      'SELECT COUNT(*) as c FROM expenses WHERE category_id = ?',
+      [categoryId]
+    )
+    const count = rows && rows.length > 0 ? rows[0].c : 0
+
+    if (count > 0) {
+      throw new Error(
+        `لا يمكن حذف الفئة — مستخدمة في ${count} مصروف. ` +
+        `احذف أو انقل المصروفات أولاً.`
+      )
+    }
+
+    // 2. Check if it exists and safety check for system category
+    const categories = await db.select<Array<{ id: string; name?: string | null; name_ar: string; name_en: string; is_system?: number }>>(
+      'SELECT * FROM expense_categories WHERE id = ?',
+      [categoryId]
+    )
+
+    if (!categories || categories.length === 0) {
+      throw new Error('فئة المصروف غير موجودة')
+    }
+
+    const category = categories[0]
+    if (category.is_system === 1) {
+      throw new Error('لا يمكن حذف فئة نظام أساسية')
+    }
+
+    // 3. Delete
+    await db.execute(
+      'DELETE FROM expense_categories WHERE id = ?',
+      [categoryId]
+    )
+
+    // 4. Audit log
+    await auditService.log({
+      action: 'delete_expense_category',
+      resource: 'expense_categories',
+      resourceId: categoryId,
+      userId,
+      userFullName,
+      details: { name: category.name || category.name_en || category.name_ar, nameAr: category.name_ar, nameEn: category.name_en },
+    })
+  }
+
+  async deleteExpenseCategory(
+    categoryId: string,
+    user: string | UserContext
+  ): Promise<void> {
+    return this.deleteCategory(categoryId, user)
+  }
+
   // ─── EXPENSE CREATION ─────────────────────────────────────────────────────
 
   /**
@@ -890,3 +951,10 @@ class ExpenseService {
 }
 
 export const expenseService = new ExpenseService()
+
+export async function deleteCategory(
+  categoryId: string,
+  user: string | UserContext
+): Promise<void> {
+  return expenseService.deleteCategory(categoryId, user)
+}
