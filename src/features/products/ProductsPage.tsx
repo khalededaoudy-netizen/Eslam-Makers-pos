@@ -29,18 +29,31 @@ import {
   Sparkles,
   Eye,
   FolderTree,
+  Barcode as BarcodeIcon,
+  RefreshCw,
+  ChevronDown,
+  Printer,
+  FileText,
 } from 'lucide-react'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useAuthStore, usePermission } from '@/stores/authStore'
 import { formatCurrency } from '@/lib/formatters'
 import { ProductForm } from './components/ProductForm'
 import { ProductDetailsModal } from './components/ProductDetailsModal'
+import { ProductBarcodeModal } from './components/ProductBarcodeModal'
 import { ExcelImportModal } from './components/ExcelImportModal'
 import { SmartImportModal } from './components/SmartImportModal'
 import { MakersImportModal } from './components/MakersImportModal'
 import { ProductImage } from '@/components/common/ProductImage'
 import { excelProductService } from '@/services/products/excelProductService'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu'
 import {
   productService,
   ProductListItem,
@@ -81,6 +94,10 @@ export function ProductsPage() {
   // Product Details Modal State
   const [viewProductTarget, setViewProductTarget] = useState<ProductListItem | null>(null)
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
+
+  // Barcode Print Modal State
+  const [barcodeProductTarget, setBarcodeProductTarget] = useState<ProductListItem | null>(null)
+  const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false)
 
   // Category Sidebar State & Counts
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({})
@@ -224,6 +241,28 @@ export function ProductsPage() {
       setFeedback({ type: 'success', message: isAr ? 'تم تصدير ملف الإكسيل بنجاح' : 'Products exported successfully' })
     } catch (err: any) {
       setFeedback({ type: 'error', message: err?.message || (isAr ? 'فشل تصدير ملف الإكسيل' : 'Export failed') })
+    }
+  }
+
+  // Handle CSV Export
+  const handleExportCSV = async (exportOnlySelected = false) => {
+    const targetProducts = exportOnlySelected
+      ? products.filter((p) => selectedIds.has(p.id))
+      : products
+
+    if (targetProducts.length === 0) {
+      setFeedback({ type: 'warning', message: isAr ? 'لا توجد منتجات لتصديرها' : 'No products to export' })
+      return
+    }
+
+    try {
+      await excelProductService.exportProductsToCSV(
+        targetProducts,
+        exportOnlySelected ? 'MAKERS_Selected_Products.csv' : 'MAKERS_Products_Catalog.csv'
+      )
+      setFeedback({ type: 'success', message: isAr ? 'تم تصدير ملف CSV بنجاح' : 'Products exported to CSV successfully' })
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err?.message || (isAr ? 'فشل تصدير ملف CSV' : 'Export failed') })
     }
   }
 
@@ -388,83 +427,20 @@ export function ProductsPage() {
           </button>
         </div>
       )}
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+      {/* Redesigned Header: Grouped Actions */}
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0 gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-foreground">{t('products.title')}</h1>
-          <p className="text-xs text-muted-foreground">{products.length} {t('products.itemsCount', 'منتج متاح في المتجر')}</p>
+          <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2 text-foreground">
+            <Package className="w-6 h-6 text-primary" />
+            <span>{t('products.title', 'المنتجات')}</span>
+          </h1>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+            {products.length} {t('products.itemsCount', 'منتج متاح في المتجر')}
+          </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Excel Export */}
-          <button
-            type="button"
-            onClick={() => handleExportExcel(false)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-muted hover:bg-muted/80 text-foreground border border-border rounded-lg text-xs font-semibold transition-colors shadow-sm"
-            title={isAr ? 'تصدير كامل المنتجات إلى ملف Excel' : 'Export all products to Excel'}
-          >
-            <Download className="w-3.5 h-3.5 text-emerald-600" />
-            <span>{isAr ? 'تصدير Excel' : 'Export Excel'}</span>
-          </button>
-
-          {/* Download Excel Template */}
-          <button
-            type="button"
-            onClick={() => {
-              const link = document.createElement('a')
-              link.href = '/templates/products_import_template.xlsx'
-              link.download = 'products_import_template.xlsx'
-              document.body.appendChild(link)
-              link.click()
-              document.body.removeChild(link)
-            }}
-            className="flex items-center gap-1.5 px-3 py-2 bg-muted hover:bg-muted/80 text-foreground border border-border rounded-lg text-xs font-semibold transition-colors shadow-sm"
-            title={isAr ? 'تحميل قالب Excel الجاهز للاستيراد (3 أعمدة)' : 'Download Excel Template'}
-          >
-            <Download className="w-3.5 h-3.5 text-blue-500" />
-            <span>{isAr ? 'تحميل قالب Excel' : 'Download Template'}</span>
-          </button>
-
-          {/* Smart Excel Import */}
-          {canCreate && (
-            <button
-              type="button"
-              onClick={() => setIsSmartImportOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded-lg text-xs font-bold transition-colors shadow-sm"
-              title={isAr ? 'استيراد ذكي من Excel مع البحث التلقائي في MAKERS' : 'Smart Excel Import with MAKERS lookup'}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>{isAr ? 'استيراد من Excel (ذكي)' : 'Smart Excel Import'}</span>
-            </button>
-          )}
-
-          {/* Excel Import */}
-          {canCreate && (
-            <button
-              type="button"
-              onClick={() => setIsExcelModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-muted hover:bg-muted/80 text-foreground border border-border rounded-lg text-xs font-semibold transition-colors shadow-sm"
-              title={isAr ? 'استيراد منتجات وقوائم أسعار من ملف Excel' : 'Import products from Excel'}
-            >
-              <Upload className="w-3.5 h-3.5 text-primary" />
-              <span>{isAr ? 'استيراد Excel' : 'Import Excel'}</span>
-            </button>
-          )}
-
-          {/* MAKERS Website Catalog Import */}
-          {canCreate && (
-            <button
-              type="button"
-              onClick={() => setIsMakersModalOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-muted hover:bg-muted/80 text-foreground border border-border rounded-lg text-xs font-semibold transition-colors shadow-sm"
-              title={isAr ? 'البحث والاستيراد المباشر من كتالوج موقع ميكرز' : 'Search and import directly from MAKERS website catalog'}
-            >
-              <Globe className="w-3.5 h-3.5 text-primary" />
-              <span>{isAr ? 'استيراد من ميكرز' : 'Import from MAKERS'}</span>
-            </button>
-          )}
-
-          {/* Add Product */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Primary Action: Add Product */}
           {canCreate && (
             <button
               type="button"
@@ -472,12 +448,121 @@ export function ProductsPage() {
                 setEditingProduct(null)
                 setIsFormOpen(true)
               }}
-              className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-bold hover:bg-primary/90 transition-colors shadow-sm"
+              className="flex items-center gap-1.5 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-xs sm:text-sm font-bold hover:bg-primary/90 transition-all shadow-sm cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>{t('products.addProduct')}</span>
+              <span>{t('products.addProduct', 'إضافة منتج')}</span>
             </button>
           )}
+
+          {/* Import Dropdown */}
+          {canCreate && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 bg-muted/60 hover:bg-muted text-foreground border border-border rounded-xl text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+                >
+                  <Upload className="w-4 h-4 text-primary" />
+                  <span>{isAr ? 'استيراد' : 'Import'}</span>
+                  <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuItem onClick={() => setIsMakersModalOpen(true)}>
+                  <Globe className="w-4 h-4 text-primary shrink-0" />
+                  <div className="flex-1 text-start">
+                    <div className="font-bold">{isAr ? 'استيراد من ميكرز' : 'Import from MAKERS'}</div>
+                    <div className="text-[10px] text-muted-foreground">{isAr ? 'بحث في كتالوج موقع MAKERS' : 'Search MAKERS online catalog'}</div>
+                  </div>
+                </DropdownMenuItem>
+
+                <DropdownMenuItem onClick={() => setIsExcelModalOpen(true)}>
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <div className="flex-1 text-start">
+                    <div className="font-bold">{isAr ? 'استيراد Excel' : 'Excel Import'}</div>
+                    <div className="text-[10px] text-muted-foreground">{isAr ? 'الطريقة التقليدية' : 'Standard file upload'}</div>
+                  </div>
+                </DropdownMenuItem>
+
+                <DropdownMenuItem onClick={() => setIsSmartImportOpen(true)}>
+                  <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+                  <div className="flex-1 text-start">
+                    <div className="font-bold">{isAr ? 'استيراد من Excel (ذكي)' : 'Smart Excel Import'}</div>
+                    <div className="text-[10px] text-muted-foreground">{isAr ? 'مع البحث التلقائي في MAKERS' : 'Auto-match with MAKERS'}</div>
+                  </div>
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem
+                  onClick={() => {
+                    const link = document.createElement('a')
+                    link.href = '/templates/products_import_template.xlsx'
+                    link.download = 'products_import_template.xlsx'
+                    document.body.appendChild(link)
+                    link.click()
+                    document.body.removeChild(link)
+                  }}
+                >
+                  <Download className="w-4 h-4 text-blue-500 shrink-0" />
+                  <div className="flex-1 text-start">
+                    <div className="font-bold">{isAr ? 'تحميل قالب Excel' : 'Download Template'}</div>
+                    <div className="text-[10px] text-muted-foreground">{isAr ? 'قالب الاستيراد الجاهز (3 أعمدة)' : '3-column ready template'}</div>
+                  </div>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
+          {/* Export Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex items-center gap-1.5 px-3.5 py-2.5 bg-muted/60 hover:bg-muted text-foreground border border-border rounded-xl text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+              >
+                <Download className="w-4 h-4 text-emerald-600" />
+                <span>{isAr ? 'تصدير' : 'Export'}</span>
+                <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={() => handleExportExcel(false)}>
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+                <div className="flex-1 text-start font-bold">
+                  {isAr ? 'تصدير Excel' : 'Export Excel (.xlsx)'}
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportCSV(false)}>
+                <FileText className="w-4 h-4 text-blue-500 shrink-0" />
+                <div className="flex-1 text-start font-bold">
+                  {isAr ? 'تصدير CSV' : 'Export CSV'}
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => window.print()}>
+                <Printer className="w-4 h-4 text-muted-foreground shrink-0" />
+                <div className="flex-1 text-start font-bold">
+                  {isAr ? 'طباعة القائمة' : 'Print Product List'}
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Refresh Button */}
+          <button
+            type="button"
+            onClick={() => {
+              loadFilterLookups()
+              loadProducts()
+            }}
+            disabled={loading}
+            className="p-2.5 bg-muted/60 hover:bg-muted text-foreground border border-border rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+            title={isAr ? 'تحديث' : 'Refresh'}
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
         </div>
       </div>
 
@@ -883,7 +968,7 @@ export function ProductsPage() {
                               setViewProductTarget(p)
                               setIsDetailsOpen(true)
                             }}
-                            className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                            className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors cursor-pointer"
                             title={isAr ? 'عرض التفاصيل' : 'View Details'}
                           >
                             <Eye className="w-3.5 h-3.5" />
@@ -895,17 +980,28 @@ export function ProductsPage() {
                                 setEditingProduct(p)
                                 setIsFormOpen(true)
                               }}
-                              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
                               title={t('common.edit', 'تعديل')}
                             >
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBarcodeProductTarget(p)
+                              setIsBarcodeModalOpen(true)
+                            }}
+                            className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                            title={isAr ? 'طباعة باركود' : 'Print Barcode'}
+                          >
+                            <BarcodeIcon className="w-3.5 h-3.5" />
+                          </button>
                           {canDelete && (
                             <button
                               type="button"
                               onClick={() => setDeleteProductTarget(p)}
-                              className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                              className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
                               title={t('common.delete', 'حذف')}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -1180,6 +1276,22 @@ export function ProductsPage() {
         itemCount={selectedIds.size}
         itemsList={products.filter(p => selectedIds.has(p.id)).slice(0, 3).map(p => isAr ? p.name_ar : p.name_en)}
         confirmText={t('common.delete', 'حذف')}
+      />
+
+      {/* Barcode Sticker Print Modal */}
+      <ProductBarcodeModal
+        product={barcodeProductTarget}
+        isOpen={isBarcodeModalOpen}
+        onClose={() => {
+          setIsBarcodeModalOpen(false)
+          setBarcodeProductTarget(null)
+        }}
+        onPrinted={() => {
+          setFeedback({
+            type: 'success',
+            message: isAr ? 'تم إرسال أمر طباعة الملصق بنجاح' : 'Barcode label sent to printer',
+          })
+        }}
       />
     </div>
   )

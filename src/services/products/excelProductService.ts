@@ -76,6 +76,40 @@ export class ExcelProductService {
   }
 
   /**
+   * Export product list to CSV and trigger browser download with UTF-8 BOM
+   */
+  async exportProductsToCSV(products: ProductListItem[], filename = 'MAKERS_POS_Products.csv'): Promise<void> {
+    const data = products.map((p) => ({
+      'ID': p.id,
+      'الاسم بالعربية (Name Ar)': p.name_ar,
+      'الاسم بالإنجليزية (Name En)': p.name_en || '',
+      'كود الصنف (SKU)': p.sku,
+      'الباركود (Barcode)': p.primary_barcode || '',
+      'التصنيف (Category)': p.category_name || '',
+      'الماركة (Brand)': p.brand_name || '',
+      'الوحدة (Unit)': p.unit_name_ar || p.unit_symbol || 'قطعة',
+      'سعر الشراء (Cost)': p.purchase_price,
+      'سعر البيع (Price)': p.selling_price,
+      'المخزون الحالي (Stock)': p.current_stock,
+      'حد الطلب الأدنى (Min Stock)': p.min_stock,
+      'مكان الدرج (Location)': p.drawer_location || '',
+      'الحالة (Status)': p.is_active ? 'Active' : 'Inactive',
+    }))
+
+    const worksheet = XLSX.utils.json_to_sheet(data)
+    const csvContent = XLSX.utils.sheet_to_csv(worksheet)
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  /**
    * Parse an uploaded .xlsx file and validate rows against database schema and uniqueness rules
    */
   async parseAndValidateExcel(file: File): Promise<ExcelImportSummary> {
