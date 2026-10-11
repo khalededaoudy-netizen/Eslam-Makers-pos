@@ -13,11 +13,18 @@ import { autoBackupService } from '@/services/db/autoBackupService'
 import { invoke } from '@tauri-apps/api/core'
 import { Zap } from 'lucide-react'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
+import { setupNumberInputWheelGuard } from '@/lib/inputGuards'
 
 function AppBootstrap() {
   const { isAuthenticated, token, setUser, clearUser, isLoading, setLoading } = useAuthStore()
   const { language, theme, setLanguage, setTheme } = useSettingsStore()
   const initialized = useRef(false)
+
+  // Guard number inputs against mouse wheel scroll value changes
+  useEffect(() => {
+    const cleanup = setupNumberInputWheelGuard()
+    return () => cleanup()
+  }, [])
 
   // Auto-cleanup legacy WebView2 saved autofill/logins on first launch after update
   useEffect(() => {
