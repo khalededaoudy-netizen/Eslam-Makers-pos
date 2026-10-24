@@ -80,20 +80,16 @@ export function SalesPage() {
   }, [loadSales])
 
   const handleOpenDetails = useCallback((saleId: string) => {
-    console.log('[Action] View clicked:', saleId)
     try {
       setSelectedSaleId(saleId)
       setDetailsModalOpen(true)
-      console.log('[Action] State set for details modal')
     } catch (err) {
       console.error('[Action] ERROR opening details:', err)
     }
   }, [])
 
   const handleOpenReceipt = useCallback(async (sale: Sale, openWhatsApp = false) => {
-    console.log(`[Action] ${openWhatsApp ? 'WhatsApp' : 'Print'} clicked:`, sale.id)
     if (actionBusy) {
-      console.log('[Action] Ignored - action already in progress')
       return
     }
     setActionBusy(true)
@@ -104,7 +100,6 @@ export function SalesPage() {
         setActiveReceipt(receipt)
         setAutoWhatsApp(openWhatsApp)
         setReceiptModalOpen(true)
-        console.log('[Action] State set for receipt modal')
       }
     } catch (err) {
       console.error('[Action] ERROR generating receipt preview:', err)

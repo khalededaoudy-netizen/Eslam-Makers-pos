@@ -49,14 +49,12 @@ export function SaleDetailsModal({
 
   useEffect(() => {
     if (isOpen && saleId) {
-      console.log('[Modal] Loading sale details for:', saleId)
       setLoading(true)
       setError(null)
       salesService
         .getSaleById(saleId)
         .then((data) => {
           if (data) {
-            console.log('[Modal] Sale loaded:', data.id, data.invoice_number)
             setSale(data)
           } else {
             console.warn('[Modal] Sale not found:', saleId)
@@ -74,15 +72,6 @@ export function SaleDetailsModal({
       setLoading(false)
     }
   }, [isOpen, saleId, t])
-
-  useEffect(() => {
-    if (sale) {
-      console.log('[Modal] Mounted:', sale?.id)
-    }
-    return () => {
-      if (sale) console.log('[Modal] Unmounted:', sale?.id)
-    }
-  }, [sale])
 
   if (!isOpen) return null
 
